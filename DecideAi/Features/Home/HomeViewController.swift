@@ -7,31 +7,30 @@
 
 import UIKit
 
-/// Temporary placeholder, only to validate the programmatic setup.
-/// It will be replaced by the real Home in Stage 2.
 final class HomeViewController: UIViewController {
 
-    private let titleLabel = UILabel()
+    private let homeView = HomeView()
+
+    // Padrão MVC com UIView própria: o controller troca a view raiz por uma
+    // view nossa. Assim o controller não cria subviews, só coordena.
+    override func loadView() {
+        view = homeView
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = Theme.Color.background
-        title = "Decide Aí"
+        // Esta propriedade define o texto do botão "voltar" das telas seguintes.
+        // Sem ela, apareceria "Back", já que a Home não tem título.
+        navigationItem.backButtonTitle = "Início"
 
-        titleLabel.text = "Decide Aí"
-        // Fonte semântica + adjustsFontForContentSizeCategory = Dynamic Type.
-        titleLabel.font = .preferredFont(forTextStyle: .largeTitle)
-        titleLabel.adjustsFontForContentSizeCategory = true
+        homeView.onStartTapped = { [weak self] in
+            self?.showDecisionScreen()
+        }
+    }
 
-        // Obrigatório ao usar Auto Layout em código: desliga a conversão
-        // automática de autoresizing mask em constraints.
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(titleLabel)
-
-        NSLayoutConstraint.activate([
-            titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            titleLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
+    private func showDecisionScreen() {
+        // push empilha a nova tela; a animação e o gesto de voltar vêm de graça.
+        navigationController?.pushViewController(DecisionViewController(), animated: true)
     }
 }
