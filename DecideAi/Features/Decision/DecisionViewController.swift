@@ -20,6 +20,9 @@ final class DecisionViewController: UIViewController {
     // Estado da decisão em criação. O Model concentra os dados e as regras.
     private var decision = Decision()
 
+    // Serviço responsável por validar/sortear e gerar o plano (vencedor definido uma única vez).
+    private let decisionService = DecisionService()
+
     // Substituímos a view raiz do controller pela nossa DecisionView.
     // Mesmo padrão usado na Home: o controller coordena, a View cuida da interface.
     override func loadView() {
@@ -58,10 +61,9 @@ final class DecisionViewController: UIViewController {
             self?.presentRemoveConfirmation(for: index)
         }
 
-        // Toque no botão "Sortear": nesta etapa mostramos apenas um aviso informativo.
-        // A integração do sorteio e navegação será feita na Etapa 5.
+        // Toque no botão "Sortear": valida, gera o plano de sorteio e navega para o resultado.
         decisionView.onDrawTapped = { [weak self] in
-            self?.presentDrawInfoAlert()
+            self?.drawDecision()
         }
     }
 
@@ -167,18 +169,27 @@ final class DecisionViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    // MARK: - Sorteio (informativo nesta etapa)
+    // MARK: - Sorteio
 
-    /// Mostra um aviso informativo ao tocar em "Sortear" enquanto ele estiver habilitado.
-    /// A lógica de sorteio e a navegação para o resultado serão implementadas na Etapa 5.
-    private func presentDrawInfoAlert() {
-        let alert = UIAlertController(
-            title: "Sortear",
-            message: "O sorteio será implementado na próxima etapa.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+    /// Valida a decisão, gera o DrawPlan (vencedor definido uma única vez)
+    /// e navega para a tela de resultado.
+    private func drawDecision() {
+        do {
+            // Validação final no Model (ex.: pergunta vazia/longa, opções insuficientes).
+            try decision.validate()
+
+            // O serviço sorteia uma única vez e devolve o plano (o último frame é o vencedor).
+            let plan = try decisionService.makeDrawPlan(for: decision)
+
+            // Navega para o resultado passando os dados prontos (sem sortear novamente na UI).
+            let resultController = ResultViewController(question: decision.displayQuestion, plan: plan)
+            navigationController?.pushViewController(resultController, animated: true)
+        } catch let error as DecisionError {
+            // Erro conhecido: mostra a mensagem amigável definida no Model.
+            presentErrorAlert(title: "Não foi possível sortear", message: error.userMessage)
+        } catch {
+            presentErrorAlert(title: "Não foi possível sortear", message: "Tente novamente.")
+        }
     }
 
     // MARK: - Feedback de erro
