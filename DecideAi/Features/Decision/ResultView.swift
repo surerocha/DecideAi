@@ -8,8 +8,8 @@
 import UIKit
 
 /// Parte visual da tela de resultado.
-/// Responsabilidade: exibir a pergunta e a opção sorteada, e informar ações do usuário.
-/// Não conhece navegação nem regras de sorteio; apenas dispara callbacks.
+/// Responsabilidade: exibir a pergunta e a opção (em animação ou resultado final),
+/// e informar ações do usuário. Não conhece navegação nem regras de sorteio.
 final class ResultView: UIView {
 
     // MARK: - Callbacks (View -> Controller)
@@ -187,28 +187,22 @@ final class ResultView: UIView {
 
     // MARK: - Atualização de conteúdo
 
-    /// Preenche a tela com a pergunta e a opção vencedora (configuração inicial).
-    func configure(question: String, winner: String) {
+    /// Define o texto da pergunta exibida na tela.
+    func setQuestion(_ question: String) {
         questionLabel.text = question
-        winnerLabel.text = winner
     }
 
-    /// Atualiza o vencedor de um novo sorteio com feedback visual.
-    /// Mesmo que o resultado seja igual ao anterior, a animação indica que houve um novo sorteio.
-    /// (A animação completa com os frames será feita na Etapa 7.)
-    func updateWinner(_ winner: String) {
-        // Animação simples de "piscar" (fade out/in): dá percepção de atualização
-        // inclusive quando o texto sorteado é o mesmo.
-        UIView.animate(withDuration: 0.12, animations: {
-            self.winnerLabel.alpha = 0.2
-            self.winnerLabel.transform = CGAffineTransform(scaleX: 0.98, y: 0.98)
-        }, completion: { _ in
-            self.winnerLabel.text = winner
-            UIView.animate(withDuration: 0.22) {
-                self.winnerLabel.alpha = 1
-                self.winnerLabel.transform = .identity
-            }
-        })
+    /// Mostra uma opção no destaque do resultado (usado durante a animação dos frames).
+    /// Troca apenas o texto, sem feedback extra, para não pesar na sequência rápida.
+    func showOption(_ text: String) {
+        winnerLabel.text = text
+    }
+
+    /// Habilita ou desabilita as ações enquanto a animação está em andamento.
+    /// Evita múltiplos sorteios e interações inconsistentes durante a reprodução.
+    func setActionsEnabled(_ enabled: Bool) {
+        tryAgainButton.isEnabled = enabled
+        newDecisionButton.isEnabled = enabled
     }
 
     // MARK: - Helpers
