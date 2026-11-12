@@ -181,8 +181,13 @@ final class DecisionViewController: UIViewController {
             // O serviço sorteia uma única vez e devolve o plano (o último frame é o vencedor).
             let plan = try decisionService.makeDrawPlan(for: decision)
 
-            // Navega para o resultado passando os dados prontos (sem sortear novamente na UI).
-            let resultController = ResultViewController(question: decision.displayQuestion, plan: plan)
+            // Navega para o resultado passando a decisão (cópia) e o plano pronto,
+            // sem sortear novamente na UI. A cópia permite "Sortear novamente" no resultado.
+            let resultController = ResultViewController(
+                question: decision.displayQuestion,
+                decision: decision,
+                plan: plan
+            )
             navigationController?.pushViewController(resultController, animated: true)
         } catch let error as DecisionError {
             // Erro conhecido: mostra a mensagem amigável definida no Model.
