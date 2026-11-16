@@ -7,78 +7,96 @@
 
 import UIKit
 
-/// Controller da tela de resultado.
-/// Responsabilidade: reproduzir a animação do sorteio (frames do DrawPlan) e
-/// coordenar ações pós-resultado.
-/// - "Sortear novamente": gera um novo DrawPlan com a mesma decisão (cópia) e anima.
-/// - "Nova decisão": volta ao início do app.
-/// O vencedor de cada sorteio é decidido uma única vez pelo DecisionService.
+// MARK: - Controller da tela de resultado
+
+/// Controller responsável por:
+/// - exibir a pergunta e reproduzir a animação do sorteio usando os `frames` do `DrawPlan`;
+/// - coordenar ações pós-resultado ("Sortear novamente" e "Nova decisão");
+/// - controlar haptics e acessibilidade (anunciar apenas o resultado final);
+/// - evitar estados concorrentes durante a animação e cancelar trabalho ao sair da tela.
+///
+/// O vencedor de cada sorteio é decidido uma única vez pelo `DecisionService` via `DrawPlan`.
 final class ResultViewController: UIViewController {
 
-    // View específica desta tela.
+    // MARK: - Dependências e estado
+
+    /// View customizada da tela.
     private let resultView = ResultView()
 
-    // Cópia da decisão usada neste fluxo (pergunta e opções no momento do sorteio).
-    // "Sortear novamente" usa esta cópia; a tela de criação mantém seu próprio estado.
+    /// Cópia da decisão (struct/value type) usada neste fluxo.
+    /// Permite "Sortear novamente" com as mesmas opções sem alterar a tela de criação.
     private let decision: Decision
 
-    // Plano atual do sorteio exibido/animado na tela.
+    /// Plano de sorteio atualmente exibido/animado.
     private var plan: DrawPlan
 
-    // Serviço usado para gerar novos sorteios a partir da mesma decisão.
+    /// Serviço para gerar novos planos de sorteio.
     private let decisionService = DecisionService()
 
-    // Controle da animação: evita sorteios concorrentes e permite cancelar ao sair da tela.
+    /// Indica se a animação está em andamento (impede ações concorrentes).
     private var isAnimating = false
+
+    /// Referência ao próximo passo agendado da animação, para permitir cancelamento.
     private var pendingFrameWorkItem: DispatchWorkItem?
 
-    // Geradores de feedback tátil (haptics).
-    // impact: toque leve a cada passo; notification: sinal de sucesso ao finalizar.
+    /// Haptics: impacto leve nos passos e notificação de sucesso ao concluir.
     private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
     private let successFeedback = UINotificationFeedbackGenerator()
 
-    // Recebemos os dados no init para garantir que a tela sempre tenha
-    // um resultado válido ao ser apresentada.
+    // MARK: - Inicialização
+
+    /// Inicializa o controller com os dados necessários para exibir e re-sortear.
+    /// - Parameters:
+    ///   - question: pergunta exibida (mantida por compatibilidade do fluxo).
+    ///   - decision: cópia da decisão (mesmas opções/pergunta) para "Sortear novamente".
+    ///   - plan: plano inicial já gerado.
     init(question: String, decision: Decision, plan: DrawPlan) {
+        // Armazena dependências/estado.
         self.decision = decision
         self.plan = plan
+        // Inicializador designado de UIViewController para criação programática.
         super.init(nibName: nil, bundle: nil)
     }
 
-    // Obrigatório ao implementar init customizado em UIViewController.
-    // Não usamos Storyboards/XIBs neste projeto.
+    /// Inicializador de storyboard/XIB (não suportado).
+    @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // Substitui a view raiz pela nossa view em código (padrão MVC usado no app).
+    // MARK: - Ciclo de vida
+
+    /// Fornece a view customizada como raiz.
     override func loadView() {
         view = resultView
     }
 
+    /// Configura conteúdo inicial e inicia a animação do plano recebido.
     override func viewDidLoad() {
         super.viewDidLoad()
 
         title = "Resultado"
 
-        // Mostra a pergunta e inicia a animação do sorteio com os frames do plano.
+        // Exibe a pergunta da decisão e conecta ações.
         resultView.setQuestion(decision.displayQuestion)
         bindViewActions()
+
+        // Inicia a reprodução dos frames do sorteio inicial.
         startDrawAnimation(with: plan)
     }
 
+    /// Se o usuário voltar (pop) durante a animação, cancela o trabalho pendente.
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
 
-        // Se o usuário voltar durante a animação, cancela o trabalho pendente
-        // para não atualizar a interface após a saída da tela.
         if isMovingFromParent {
             cancelAnimation()
         }
     }
 
-    // MARK: - Ligações View -> Controller
+    // MARK: - Bindings
 
+    /// Conecta callbacks da view às ações do controller.
     private func bindViewActions() {
         resultView.onTryAgainTapped = { [weak self] in
             self?.drawAgain()
@@ -91,98 +109,118 @@ final class ResultViewController: UIViewController {
 
     // MARK: - Animação do sorteio
 
-    /// Inicia a reprodução dos frames (troca de opções com desaceleração) do plano informado.
+    /// Prepara e inicia a animação de um `DrawPlan`.
     private func startDrawAnimation(with plan: DrawPlan) {
-        // Cancela qualquer animação anterior antes de começar uma nova.
+        // Garante que não haja animação anterior ativa.
         cancelAnimation()
 
+        // Caso defensivo: se não houver frames, mostra o vencedor e libera ações.
         guard !plan.frames.isEmpty else {
             resultView.showOption(plan.winner)
             resultView.setActionsEnabled(true)
             return
         }
 
+        // Marca estado de animação e bloqueia interações concorrentes.
         isAnimating = true
-        // Desabilita ações durante a animação para evitar estados concorrentes.
         resultView.setActionsEnabled(false)
 
-        // Prepara os geradores para resposta tátil imediata.
+        // Oculta o texto do resultado para o VoiceOver durante as trocas rápidas.
+        // (Anunciaremos apenas o resultado final.)
+        resultView.setWinnerAccessibilityHidden(true)
+
+        // Prepara os haptics para resposta imediata.
         impactFeedback.prepare()
         successFeedback.prepare()
 
+        // Inicia pelo primeiro frame.
         playFrame(at: 0, in: plan.frames, finalWinner: plan.winner)
     }
 
-    /// Reproduz um frame e agenda o próximo respeitando a duração de cada etapa.
-    /// A UI apenas toca os frames na ordem; o último frame já é o vencedor (DrawPlan).
+    /// Reproduz um frame e agenda o próximo após a duração do frame atual.
+    /// - Parameters:
+    ///   - index: índice do frame atual.
+    ///   - frames: sequência completa de frames.
+    ///   - finalWinner: vencedor final (último frame) para garantir consistência.
     private func playFrame(at index: Int, in frames: [DrawFrame], finalWinner: String) {
-        // Se a animação foi cancelada (ex.: usuário voltou), interrompe a sequência.
+        // Se cancelado, interrompe.
         guard isAnimating else { return }
+
+        // Segurança: índice inválido encerra com o vencedor.
         guard frames.indices.contains(index) else {
             finishAnimation(with: finalWinner)
             return
         }
 
         let frame = frames[index]
-        // Atualiza o texto exibido para a opção deste frame (troca estilo "sorteio").
+
+        // Mostra a opção correspondente ao frame atual.
         resultView.showOption(frame.text)
 
+        // Se for o último frame, finaliza (vencedor).
         if index == frames.count - 1 {
-            // Último frame: vencedor definido. Finaliza com feedback de sucesso.
             finishAnimation(with: finalWinner)
             return
         }
 
-        // Haptic leve durante a animação. Nos frames iniciais (muito rápidos) pulamos
-        // alguns disparos para não ficar excessivo; nos finais (mais lentos) vibra em todos.
+        // Haptic leve: nos frames muito rápidos evitamos vibrar em todos para não exagerar;
+        // em frames mais lentos (desaceleração) vibramos com mais frequência.
         if index % 2 == 0 || frame.duration >= 0.15 {
             impactFeedback.impactOccurred()
         }
 
-        // Agenda o próximo frame após a duração deste, respeitando a desaceleração do plano.
+        // Cria o trabalho para tocar o próximo frame após a duração atual.
         let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.isAnimating else { return }
             self.playFrame(at: index + 1, in: frames, finalWinner: finalWinner)
         }
 
+        // Guarda referência para poder cancelar e agenda na fila principal (UI).
         pendingFrameWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + frame.duration, execute: workItem)
     }
 
-    /// Conclui a animação: fixa o vencedor, emite haptic de sucesso e reabilita ações.
+    /// Finaliza a animação: fixa vencedor, anuncia para acessibilidade, emite haptic e libera ações.
     private func finishAnimation(with winner: String) {
-        // Garante que o texto final seja exatamente o vencedor.
+        // Garante que o texto final seja o vencedor.
         resultView.showOption(winner)
 
-        // Feedback tátil de conclusão (sucesso).
+        // Torna o resultado acessível novamente e anuncia apenas o valor final.
+        resultView.setWinnerAccessibilityHidden(false)
+        UIAccessibility.post(notification: .announcement, argument: "Resultado: \(winner)")
+
+        // Feedback tátil de sucesso.
         successFeedback.notificationOccurred(.success)
 
+        // Atualiza estado interno e reabilita botões.
         isAnimating = false
         pendingFrameWorkItem = nil
         resultView.setActionsEnabled(true)
     }
 
-    /// Cancela qualquer frame pendente e marca a animação como encerrada.
+    /// Cancela animação em andamento e limpa trabalho agendado.
     private func cancelAnimation() {
         isAnimating = false
         pendingFrameWorkItem?.cancel()
         pendingFrameWorkItem = nil
+        // Se interrompida, garante que o resultado não permaneça oculto para acessibilidade.
+        resultView.setWinnerAccessibilityHidden(false)
     }
 
-    // MARK: - Ações
+    // MARK: - Ações do usuário
 
-    /// Gera um novo sorteio com a mesma decisão e reproduz a animação do novo plano.
+    /// Gera um novo plano com a mesma decisão e anima o novo resultado.
     private func drawAgain() {
-        // Impede múltiplos sorteios enquanto uma animação está em andamento.
+        // Evita iniciar outro sorteio durante a animação.
         guard !isAnimating else { return }
 
         do {
-            // Valida e gera um novo plano (novo vencedor definido uma única vez).
+            // Valida e gera um novo plano (vencedor definido uma única vez por sorteio).
             try decision.validate()
             let newPlan = try decisionService.makeDrawPlan(for: decision)
             plan = newPlan
 
-            // Reproduz a animação com os frames do novo sorteio.
+            // Reproduz a nova animação.
             startDrawAnimation(with: newPlan)
         } catch let error as DecisionError {
             presentErrorAlert(message: error.userMessage)
@@ -191,24 +229,96 @@ final class ResultViewController: UIViewController {
         }
     }
 
-    /// Volta à tela inicial para começar uma nova decisão.
+    /// Volta à Home para iniciar uma nova decisão.
     private func startNewDecision() {
-        // Bloqueia a ação durante a animação (botão já estará desabilitado, mas reforçamos).
+        // Bloqueio extra além do estado desabilitado dos botões.
         guard !isAnimating else { return }
 
-        // popToRootViewController retorna ao primeiro view controller da pilha (Home).
+        // Retorna ao primeiro controller da pilha de navegação (Home).
         navigationController?.popToRootViewController(animated: true)
     }
 
-    // MARK: - Feedback de erro
+    // MARK: - Alertas
 
+    /// Exibe alerta de erro simples.
     private func presentErrorAlert(message: String) {
-        let alert = UIAlertController(
-            title: "Não foi possível sortear",
-            message: message,
-            preferredStyle: .alert
-        )
+        let alert = UIAlertController(title: "Não foi possível sortear", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
 }
+
+/*
+ MARK: - Como seria em SwiftUI (equivalente conceitual)
+
+ import SwiftUI
+
+ struct ResultScreen: View {
+     let question: String
+     let decision: Decision
+
+     @State private var displayed = ""
+     @State private var isAnimating = false
+     @Environment(\.dismiss) private var dismiss
+     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+     private let service = DecisionService()
+
+     var body: some View {
+         VStack(spacing: 16) {
+             Text("Pergunta").font(.headline).foregroundStyle(.secondary)
+             Text(question).font(.title3)
+
+             Text("Resultado").font(.headline).foregroundStyle(.secondary)
+             Text(displayed)
+                 .font(.largeTitle.bold())
+                 .foregroundStyle(.indigo)
+                 .accessibilityHidden(isAnimating)
+
+             Button("Sortear novamente") { Task { await animateDraw() } }
+                 .buttonStyle(PrimaryButtonStyle())
+                 .disabled(isAnimating)
+
+             Button("Nova decisão") { /* pop to root via path */ }
+                 .disabled(isAnimating)
+         }
+         .padding()
+         .navigationTitle("Resultado")
+         .task { await animateDraw() } // anima ao entrar
+     }
+
+     // Reproduz os frames com delays (equivalente ao asyncAfter encadeado).
+     func animateDraw() async {
+         guard !isAnimating else { return }
+         do {
+             try decision.validate()
+             let plan = try service.makeDrawPlan(for: decision)
+
+             isAnimating = true
+             let impact = UIImpactFeedbackGenerator(style: .light)
+             let success = UINotificationFeedbackGenerator()
+             impact.prepare(); success.prepare()
+
+             for (index, frame) in plan.frames.enumerated() {
+                 displayed = frame.text
+                 if index < plan.frames.count - 1 {
+                     if index % 2 == 0 || frame.duration >= 0.15 { impact.impactOccurred() }
+                     try? await Task.sleep(nanoseconds: UInt64(frame.duration * 1_000_000_000))
+                 } else {
+                     success.notificationOccurred(.success)
+                     UIAccessibility.post(notification: .announcement, argument: "Resultado: \(frame.text)")
+                 }
+             }
+             isAnimating = false
+         } catch {
+             isAnimating = false
+             // apresentar erro via alert/binding
+         }
+     }
+ }
+
+ Observações:
+ - `.task` é cancelada automaticamente quando a view some (semelhante a cancelar o DispatchWorkItem).
+ - `@State` controla `displayed`/`isAnimating` e a UI atualiza declarativamente.
+ - `NavigationStack` com `path` facilita "Nova decisão" (voltar à raiz) de forma declarativa.
+*/

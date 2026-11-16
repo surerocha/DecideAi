@@ -7,91 +7,104 @@
 
 import UIKit
 
-/// Controller da tela de criação da decisão.
-/// Responsabilidade: coordenar a View e o Model (Decision).
-/// - Recebe eventos da View (callbacks).
-/// - Atualiza o Model usando suas APIs (sem duplicar regras de validação).
-/// - Pede para a View refletir o estado atual.
+// MARK: - Controller da tela de criação da decisão
+
+/// Controller (camada de coordenação) da tela de criação da decisão.
+/// Responsabilidades:
+/// - conectar eventos da `DecisionView` (callbacks) às ações do app;
+/// - manter o estado do `Decision` (Model) e chamar suas APIs (sem duplicar validação);
+/// - apresentar alertas de erro/sucesso contextual usando `DecisionError.userMessage`;
+/// - navegar para a tela de resultado ao sortear.
+///
+/// A View não conhece navegação nem regras de negócio; o Model não conhece UIKit.
 final class DecisionViewController: UIViewController {
 
-    // View específica desta tela (criada por nós, em código).
+    // MARK: - Propriedades
+
+    /// View customizada responsável pela interface da tela de criação.
     private let decisionView = DecisionView()
 
-    // Estado da decisão em criação. O Model concentra os dados e as regras.
+    /// Estado da decisão em criação (pergunta e opções).
+    /// O Model (`Decision`) é a fonte da verdade para as regras.
     private var decision = Decision()
 
-    // Serviço responsável por validar/sortear e gerar o plano (vencedor definido uma única vez).
+    /// Serviço de sorteio/geração do plano de animação (não usa UIKit).
     private let decisionService = DecisionService()
 
-    // Substituímos a view raiz do controller pela nossa DecisionView.
-    // Mesmo padrão usado na Home: o controller coordena, a View cuida da interface.
+    // MARK: - Ciclo de vida
+
+    /// Substitui a view raiz do controller pela `DecisionView`.
+    /// Padrão usado no app: o controller coordena, a view monta a UI.
     override func loadView() {
         view = decisionView
     }
 
+    /// Chamado após a view estar carregada. Configura título, bindings e estado inicial.
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        // Título exibido na barra de navegação.
         title = "Nova decisão"
 
+        // Conecta eventos da View aos handlers deste controller.
         bindViewActions()
+
+        // Sincroniza a UI com o estado atual do Model (lista vazia, botão desabilitado etc.).
         refreshView()
     }
 
     // MARK: - Ligações View -> Controller
 
+    /// Registra callbacks da `DecisionView` para reagir às interações do usuário.
     private func bindViewActions() {
-        // Mantém a pergunta do Model sincronizada com o que o usuário digita.
+        // Mantém a pergunta do Model sincronizada com o campo de texto.
         decisionView.onQuestionChanged = { [weak self] text in
             self?.decision.question = text
         }
 
-        // Tenta adicionar uma nova alternativa usando o Model.
+        // Adiciona uma nova alternativa.
         decisionView.onAddOption = { [weak self] text in
             self?.addOption(text)
         }
 
-        // Solicita edição de uma opção existente.
+        // Abre fluxo de edição de uma opção existente.
         decisionView.onEditOption = { [weak self] index in
             self?.presentEditAlert(for: index)
         }
 
-        // Solicita remoção de uma opção existente (com confirmação).
+        // Pede confirmação antes de remover uma opção.
         decisionView.onRemoveOption = { [weak self] index in
             self?.presentRemoveConfirmation(for: index)
         }
 
-        // Toque no botão "Sortear": valida, gera o plano de sorteio e navega para o resultado.
+        // Valida, gera o plano e navega para a tela de resultado.
         decisionView.onDrawTapped = { [weak self] in
             self?.drawDecision()
         }
     }
 
-    // MARK: - Atualização da tela
+    // MARK: - Sincronização da UI
 
-    /// Atualiza a lista de opções e o estado dos botões com base no Model.
+    /// Atualiza a lista de opções e o estado do botão "Sortear" com base no Model.
     private func refreshView() {
         decisionView.displayOptions(decision.options)
-        // "Sortear" só é habilitado quando há opções suficientes (>= 2), conforme o Model.
+        // Habilita o sorteio apenas quando há pelo menos 2 opções (regra do Model).
         decisionView.setDrawEnabled(decision.canDraw)
     }
 
-    // MARK: - Ações
+    // MARK: - Ações de opções
 
+    /// Tenta adicionar uma opção ao Model; em caso de erro mostra alerta.
     private func addOption(_ text: String) {
         do {
-            // A validação (vazio, tamanho, duplicata, limite etc.) fica no Decision.
-            // Aqui apenas pedimos a alteração e reagimos ao sucesso/erro.
+            // Validações (vazio, tamanho, duplicata, limite) ficam no Decision.
             try decision.addOption(text)
-
-            // Sucesso: limpa o campo e atualiza a lista/estados com base no Model.
+            // Sucesso: limpa o campo e atualiza a tela.
             decisionView.clearNewOptionField()
             refreshView()
         } catch let error as DecisionError {
-            // Erro de regra conhecido: mostramos a mensagem amigável definida no Model.
             presentErrorAlert(title: "Não foi possível adicionar", message: error.userMessage)
         } catch {
-            // Segurança para erros inesperados (não previsto nas regras atuais).
             presentErrorAlert(title: "Não foi possível adicionar", message: "Não foi possível adicionar esta alternativa.")
         }
     }
@@ -103,13 +116,9 @@ final class DecisionViewController: UIViewController {
         guard decision.options.indices.contains(index) else { return }
         let currentValue = decision.options[index]
 
-        let alert = UIAlertController(
-            title: "Editar opção",
-            message: nil,
-            preferredStyle: .alert
-        )
+        let alert = UIAlertController(title: "Editar opção", message: nil, preferredStyle: .alert)
 
-        // Adiciona um UITextField ao alerta, pré-preenchido com o valor atual.
+        // Adiciona um TextField ao alerta, pré-preenchido com o valor atual.
         alert.addTextField { textField in
             textField.text = currentValue
             textField.placeholder = "Alternativa"
@@ -117,10 +126,10 @@ final class DecisionViewController: UIViewController {
             textField.autocapitalizationType = .sentences
         }
 
-        // "Cancelar" fecha o alerta sem alterar nada.
+        // Cancelar: apenas fecha o alerta.
         alert.addAction(UIAlertAction(title: "Cancelar", style: .cancel))
 
-        // "Salvar" tenta aplicar a edição usando o Model.
+        // Salvar: tenta atualizar via Model.
         alert.addAction(UIAlertAction(title: "Salvar", style: .default) { [weak self] _ in
             guard let self else { return }
             let newText = alert.textFields?.first?.text ?? ""
@@ -130,9 +139,10 @@ final class DecisionViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// Aplica a edição no Model e atualiza a UI ou mostra erro.
     private func updateOption(at index: Int, to text: String) {
         do {
-            // O Model valida o novo texto e ignora o próprio índice ao checar duplicatas.
+            // O Model ignora o próprio índice ao checar duplicatas (ignoringIndex).
             try decision.updateOption(at: index, to: text)
             refreshView()
         } catch let error as DecisionError {
@@ -155,13 +165,12 @@ final class DecisionViewController: UIViewController {
             preferredStyle: .alert
         )
 
-        // "Cancelar" fecha o alerta sem remover.
+        // Cancelar: não remove.
         alert.addAction(UIAlertAction(title: "Cancelar", style: .cancel))
 
-        // "Remover" usa estilo destrutivo para indicar a ação de exclusão.
+        // Remover: estilo destrutivo indica ação de exclusão.
         alert.addAction(UIAlertAction(title: "Remover", style: .destructive) { [weak self] _ in
             guard let self else { return }
-            // O Model remove pelo índice (ignora índices inválidos com segurança).
             self.decision.removeOption(at: index)
             self.refreshView()
         })
@@ -169,20 +178,19 @@ final class DecisionViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    // MARK: - Sorteio
+    // MARK: - Sorteio e navegação
 
-    /// Valida a decisão, gera o DrawPlan (vencedor definido uma única vez)
-    /// e navega para a tela de resultado.
+    /// Valida a decisão, gera o `DrawPlan` e navega para a tela de resultado.
     private func drawDecision() {
         do {
-            // Validação final no Model (ex.: pergunta vazia/longa, opções insuficientes).
+            // Validação final (pergunta, opções suficientes etc.).
             try decision.validate()
 
-            // O serviço sorteia uma única vez e devolve o plano (o último frame é o vencedor).
+            // Sorteio e preparação da animação (vencedor definido uma única vez).
             let plan = try decisionService.makeDrawPlan(for: decision)
 
-            // Navega para o resultado passando a decisão (cópia) e o plano pronto,
-            // sem sortear novamente na UI. A cópia permite "Sortear novamente" no resultado.
+            // Passa uma cópia da decisão e o plano para a tela de resultado.
+            // A cópia permite "Sortear novamente" no resultado sem alterar esta tela.
             let resultController = ResultViewController(
                 question: decision.displayQuestion,
                 decision: decision,
@@ -190,28 +198,94 @@ final class DecisionViewController: UIViewController {
             )
             navigationController?.pushViewController(resultController, animated: true)
         } catch let error as DecisionError {
-            // Erro conhecido: mostra a mensagem amigável definida no Model.
             presentErrorAlert(title: "Não foi possível sortear", message: error.userMessage)
         } catch {
             presentErrorAlert(title: "Não foi possível sortear", message: "Tente novamente.")
         }
     }
 
-    // MARK: - Feedback de erro
+    // MARK: - Feedback
 
-    /// Exibe um alerta simples usando UIAlertController (componente nativo do UIKit
-    /// para mensagens pontuais que pedem confirmação do usuário).
+    /// Exibe um alerta simples (`UIAlertController`) com título e mensagem.
     private func presentErrorAlert(title: String, message: String) {
-        let alert = UIAlertController(
-            title: title,
-            message: message,
-            preferredStyle: .alert
-        )
-
-        // Ação padrão "OK" apenas fecha o alerta.
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
-
-        // Apresenta o alerta modalmente sobre a tela atual.
         present(alert, animated: true)
     }
 }
+
+/*
+ MARK: - Como seria em SwiftUI (equivalente conceitual)
+
+ Em SwiftUI, o controller explícito muitas vezes some: a View mantém estado (`@State`) e chama
+ o Model/Service diretamente. Também podemos usar `@Observable` (ou ObservableObject) para
+ separar melhor a lógica.
+
+ import SwiftUI
+
+ struct DecisionScreen: View {
+     @State private var decision = Decision()
+     @State private var newOptionText = ""
+     @State private var alertError: DecisionError?
+     @State private var showResult = false
+     @State private var resultPlan: DrawPlan?
+
+     private let service = DecisionService()
+
+     var body: some View {
+         Form {
+             Section("O que você quer decidir?") {
+                 TextField("Digite sua pergunta", text: $decision.question)
+             }
+
+             Section("Opções") {
+                 ForEach(Array(decision.options.enumerated()), id: \.offset) { index, option in
+                     HStack {
+                         Text(option)
+                         Spacer()
+                         Button("Editar") { /* apresentar sheet/alert com textfield */ }
+                         Button("Remover") { decision.removeOption(at: index) }
+                             .foregroundStyle(.red)
+                     }
+                 }
+             }
+
+             HStack {
+                 TextField("Nova alternativa", text: $newOptionText)
+                 Button("Adicionar") {
+                     do {
+                         try decision.addOption(newOptionText)
+                         newOptionText = ""
+                     } catch let e as DecisionError { alertError = e }
+                     catch { alertError = .emptyOption } // fallback
+                 }
+             }
+
+             Button("Sortear") {
+                 do {
+                     try decision.validate()
+                     let plan = try service.makeDrawPlan(for: decision)
+                     resultPlan = plan
+                     showResult = true
+                 } catch let e as DecisionError { alertError = e }
+                 catch { alertError = .notEnoughOptions }
+             }
+             .disabled(!decision.canDraw)
+         }
+         .navigationTitle("Nova decisão")
+         .alert("Erro", isPresented: .constant(alertError != nil)) {
+             Button("OK") { alertError = nil }
+         } message: { Text(alertError?.userMessage ?? "") }
+         .navigationDestination(isPresented: $showResult) {
+             if let plan = resultPlan {
+                 ResultScreen(question: decision.displayQuestion, decision: decision, plan: plan)
+             }
+         }
+     }
+ }
+
+ Pontos equivalentes:
+ - `UIAlertController` vira `.alert(...)`.
+ - Editar/remover podem ser feitos em `ForEach` com botões ou em uma `List` com swipe actions.
+ - Navegação: `navigationDestination` com estado em vez de `pushViewController`.
+*/
