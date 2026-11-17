@@ -45,6 +45,16 @@ final class DecisionViewController: UIViewController {
 
         // Título exibido na barra de navegação.
         title = "Nova decisão"
+        navigationItem.largeTitleDisplayMode = .never
+
+        // Aparência da barra sobre fundo canvas.
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundColor = Theme.Color.canvas.withAlphaComponent(0.9)
+        appearance.shadowColor = .clear
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
+        navigationController?.navigationBar.tintColor = Theme.Color.accentText
 
         // Conecta eventos da View aos handlers deste controller.
         bindViewActions()

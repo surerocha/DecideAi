@@ -7,83 +7,54 @@
 
 import UIKit
 
-// MARK: - View da tela de criação da decisão
+// MARK: - View da tela de criação (identidade Figma)
 
-/// Parte visual da tela de criação da decisão.
-/// Responsabilidades:
-/// - construir e configurar a interface (campos, lista de opções, botões);
-/// - aplicar layout com Auto Layout e suportar rolagem/Dynamic Type;
-/// - tratar aspectos de UI do teclado (insets e rolagem até o campo ativo);
-/// - expor interações do usuário via callbacks para o controller.
-///
-/// Não conhece navegação, não altera o Model diretamente e não aplica regras de negócio.
+/// Tela de criação com visual do protótipo: fundo canvas, campos estilizados,
+/// opções em cartões com badge colorida e ações, contador, estado vazio e CTA.
+/// Mantém a API pública usada pelo `DecisionViewController` (callbacks e métodos).
 final class DecisionView: UIView {
 
     // MARK: - Callbacks (View -> Controller)
 
-    /// Chamado quando o texto da pergunta muda (a cada edição).
     var onQuestionChanged: ((String) -> Void)?
-
-    /// Chamado quando o usuário toca em "Adicionar", enviando o texto digitado.
     var onAddOption: ((String) -> Void)?
-
-    /// Chamado quando o usuário toca em "Editar" em uma opção (envia o índice).
     var onEditOption: ((Int) -> Void)?
-
-    /// Chamado quando o usuário toca em "Remover" em uma opção (envia o índice).
     var onRemoveOption: ((Int) -> Void)?
-
-    /// Chamado quando o usuário toca em "Sortear".
     var onDrawTapped: (() -> Void)?
 
-    // MARK: - Componentes de UI
+    // MARK: - UI
 
-    // Scroll view: permite rolar quando o conteúdo excede a área visível (ex.: teclado, muitas opções).
     private let scrollView = UIScrollView()
-
-    // Stack principal vertical: organiza os elementos na ordem com espaçamentos consistentes.
     private let contentStack = UIStackView()
 
-    // Rótulo/prompt da pergunta.
-    private let promptLabel = DecisionView.makeLabel(
-        text: "O que você quer decidir?",
-        textStyle: .title2,
-        color: Theme.Color.primaryText,
-        bold: true
-    )
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
 
-    // Campo de texto da pergunta (entrada de uma linha).
-    private let questionTextField = UITextField()
+    private let questionSectionLabel = makeSectionLabel("PERGUNTA")
+    private let questionTextField = PaddedTextField()
 
-    // Rótulo da seção de opções.
-    private let optionsTitleLabel = DecisionView.makeLabel(
-        text: "Opções",
-        textStyle: .headline,
-        color: Theme.Color.primaryText,
-        bold: true
-    )
+    private let optionsHeaderStack = UIStackView()
+    private let optionsTitleLabel = UILabel()
+    private let optionsCountBadge = PaddingLabel()
+    private let minLabel = UILabel()
 
-    // Stack vertical que contém as linhas de opções (cada linha: texto + editar + remover).
-    private let optionsListStack = UIStackView()
-
-    // Linha horizontal para adicionar opção: [campo de texto] + [botão Adicionar].
-    private let addOptionRowStack = UIStackView()
-
-    // Campo de texto para digitar uma nova alternativa.
-    private let newOptionTextField = UITextField()
-
-    // Botão secundário para confirmar adição da alternativa.
+    private let addRowStack = UIStackView()
+    private let newOptionTextField = PaddedTextField()
     private let addOptionButton = UIButton(type: .system)
 
-    // Botão principal para iniciar o sorteio (habilitado conforme regras do Model).
-    private let drawButton = PrimaryButton(title: "Sortear")
+    private let emptyStateView = UIView()
+    private let optionsListStack = UIStackView()
 
-    // Tokens dos observadores de notificação do teclado (para remoção no deinit).
+    private let hintLabel = UILabel()
+    private let drawButton = PrimaryButton(title: "Sortear", style: .primary)
+
     private var keyboardObservers: [NSObjectProtocol] = []
+    private weak var activeTextField: UITextField?
+    private let keyboardScrollPadding: CGFloat = 48
+    private var currentOptionCount = 0
 
-    // MARK: - Inicialização
+    // MARK: - Init
 
-    /// Inicializador programático.
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureViews()
@@ -91,95 +62,176 @@ final class DecisionView: UIView {
         configureKeyboardHandling()
         buildHierarchy()
         activateConstraints()
+        updateHint(enabled: false)
     }
 
-    /// Inicializador de storyboard/XIB (não suportado).
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Remove observadores ao desalocar a view, evitando callbacks inválidos.
     deinit {
         keyboardObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
-    // MARK: - Configuração dos componentes
+    // MARK: - Configuração
 
-    /// Define propriedades visuais e comportamentais dos componentes.
     private func configureViews() {
-        backgroundColor = Theme.Color.background
+        backgroundColor = Theme.Color.canvas
 
-        // --- Campo da pergunta ---
-        questionTextField.placeholder = "Digite sua pergunta"
-        questionTextField.font = .preferredFont(forTextStyle: .body)
-        questionTextField.adjustsFontForContentSizeCategory = true
-        questionTextField.textColor = Theme.Color.primaryText
-        questionTextField.borderStyle = .roundedRect
-        questionTextField.returnKeyType = .done
-        questionTextField.clearButtonMode = .whileEditing
+        titleLabel.text = "Nova decisão"
+        titleLabel.font = Theme.Font.scaledDisplay(baseSize: 34, weight: .black, textStyle: .largeTitle)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.textColor = Theme.Color.ink
+
+        subtitleLabel.text = "Pergunte, adicione as opções e sorteie."
+        subtitleLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.textColor = Theme.Color.ink2
+        subtitleLabel.numberOfLines = 0
+
+        styleField(questionTextField, placeholder: "O que você quer decidir?")
         questionTextField.accessibilityLabel = "Pergunta da decisão"
-        // Define delegate para tratar "Done" e acompanhar foco (teclado/acessibilidade de rolagem).
+        questionTextField.returnKeyType = .done
         questionTextField.delegate = self
 
-        // --- Stack principal ---
+        // Cabeçalho de opções: "Opções" + mín + contador n/MAX
+        optionsTitleLabel.text = "Opções"
+        optionsTitleLabel.font = Theme.Font.scaledDisplay(baseSize: 22, weight: .black, textStyle: .title2)
+        optionsTitleLabel.adjustsFontForContentSizeCategory = true
+        optionsTitleLabel.textColor = Theme.Color.ink
+
+        minLabel.text = "mín. 2"
+        minLabel.font = UIFont.preferredFont(forTextStyle: .caption1)
+        minLabel.adjustsFontForContentSizeCategory = true
+        minLabel.textColor = Theme.Color.ink2
+
+        optionsCountBadge.font = Theme.Font.display(size: 13, weight: .heavy)
+        optionsCountBadge.textAlignment = .center
+        optionsCountBadge.insets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        optionsCountBadge.layer.cornerRadius = 12
+        optionsCountBadge.clipsToBounds = true
+
+        optionsHeaderStack.axis = .horizontal
+        optionsHeaderStack.alignment = .center
+        optionsHeaderStack.spacing = 8
+
+        // Linha de adicionar
+        addRowStack.axis = .horizontal
+        addRowStack.alignment = .fill
+        addRowStack.spacing = 10
+
+        styleField(newOptionTextField, placeholder: "Nova opção")
+        newOptionTextField.accessibilityLabel = "Nova alternativa"
+        newOptionTextField.returnKeyType = .done
+        newOptionTextField.delegate = self
+
+        var addConfig = UIButton.Configuration.filled()
+        addConfig.title = "Adicionar"
+        addConfig.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
+        addConfig.imagePadding = 4
+        addConfig.baseBackgroundColor = Theme.Color.accentSoft
+        addConfig.baseForegroundColor = Theme.Color.accentText
+        addConfig.cornerStyle = .fixed
+        addConfig.background.cornerRadius = Theme.Layout.fieldRadius
+        addConfig.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 14)
+        addConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+            var r = a; r.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: Theme.Font.display(size: 15, weight: .heavy)); return r
+        }
+        addOptionButton.configuration = addConfig
+        addOptionButton.setContentHuggingPriority(.required, for: .horizontal)
+        addOptionButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addOptionButton.accessibilityHint = "Adiciona a alternativa digitada à lista."
+
+        // Lista e estado vazio
+        optionsListStack.axis = .vertical
+        optionsListStack.alignment = .fill
+        optionsListStack.spacing = 10
+        buildEmptyState()
+
+        // Hint + CTA
+        hintLabel.font = UIFont.preferredFont(forTextStyle: .footnote).withWeight(.semibold)
+        hintLabel.adjustsFontForContentSizeCategory = true
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 0
+
+        if var c = drawButton.configuration {
+            c.image = UIImage(systemName: "die.face.5", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
+            c.imagePadding = 8
+            drawButton.configuration = c
+        }
+        drawButton.accessibilityHint = "Realiza o sorteio quando houver opções suficientes."
+
         contentStack.axis = .vertical
         contentStack.alignment = .fill
         contentStack.spacing = Theme.Spacing.medium
-        // Espaço maior antes do botão principal.
-        contentStack.setCustomSpacing(Theme.Spacing.extraLarge, after: addOptionRowStack)
-
-        // --- Lista de opções ---
-        optionsListStack.axis = .vertical
-        optionsListStack.alignment = .fill
-        optionsListStack.spacing = Theme.Spacing.small
-
-        // --- Linha de adicionar opção ---
-        addOptionRowStack.axis = .horizontal
-        addOptionRowStack.alignment = .fill
-        addOptionRowStack.spacing = Theme.Spacing.small
-
-        // --- Campo de nova alternativa ---
-        newOptionTextField.placeholder = "Nova alternativa"
-        newOptionTextField.font = .preferredFont(forTextStyle: .body)
-        newOptionTextField.adjustsFontForContentSizeCategory = true
-        newOptionTextField.textColor = Theme.Color.primaryText
-        newOptionTextField.borderStyle = .roundedRect
-        newOptionTextField.returnKeyType = .done
-        newOptionTextField.clearButtonMode = .whileEditing
-        newOptionTextField.accessibilityLabel = "Nova alternativa"
-        newOptionTextField.delegate = self
-
-        // --- Botão Adicionar ---
-        addOptionButton.setTitle("Adicionar", for: .normal)
-        addOptionButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
-        addOptionButton.titleLabel?.adjustsFontForContentSizeCategory = true
-        addOptionButton.tintColor = Theme.Color.accent
-        addOptionButton.accessibilityHint = "Adiciona a alternativa digitada à lista."
-        // Mantém o botão no tamanho do conteúdo (não estica horizontalmente).
-        addOptionButton.setContentHuggingPriority(.required, for: .horizontal)
-        addOptionButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        // --- Botão Sortear ---
-        drawButton.accessibilityHint = "Realiza o sorteio quando houver opções suficientes."
+        contentStack.setCustomSpacing(6, after: titleLabel)
+        contentStack.setCustomSpacing(Theme.Spacing.large, after: subtitleLabel)
+        contentStack.setCustomSpacing(Theme.Spacing.large, after: questionTextField)
+        contentStack.setCustomSpacing(10, after: addRowStack)
+        contentStack.setCustomSpacing(Theme.Spacing.large, after: optionsListStack)
     }
 
-    // MARK: - Ações
+    private func styleField(_ field: PaddedTextField, placeholder: String) {
+        field.placeholder = placeholder
+        field.font = UIFont.preferredFont(forTextStyle: .body)
+        field.adjustsFontForContentSizeCategory = true
+        field.textColor = Theme.Color.ink
+        field.backgroundColor = Theme.Color.surface
+        field.layer.cornerRadius = Theme.Layout.fieldRadius
+        field.layer.cornerCurve = .continuous
+        field.layer.borderWidth = 1.5
+        field.layer.borderColor = Theme.Color.line.resolvedColor(with: traitCollection).cgColor
+        field.clearButtonMode = .whileEditing
+    }
 
-    /// Conecta eventos de UI aos callbacks expostos.
+    private func buildEmptyState() {
+        // Cartão vazio tracejado com ilustração simples (cartas/?), como no protótipo.
+        emptyStateView.layer.cornerRadius = Theme.Layout.cardRadius
+        emptyStateView.layer.borderWidth = 1.5
+        emptyStateView.layer.borderColor = Theme.Color.ink2.withAlphaComponent(0.35).cgColor
+
+        let q = UILabel()
+        q.text = "?"
+        q.font = Theme.Font.display(size: 34, weight: .black)
+        q.textColor = Theme.Color.limeInk
+        q.textAlignment = .center
+        q.backgroundColor = Theme.Color.lime
+        q.layer.cornerRadius = 14
+        q.clipsToBounds = true
+
+        let t = UILabel()
+        t.text = "Nenhuma opção ainda"
+        t.font = Theme.Font.display(size: 20, weight: .heavy)
+        t.textColor = Theme.Color.ink
+        t.textAlignment = .center
+        let s = UILabel()
+        s.text = "Adicione suas opções e deixe o sorteio escolher."
+        s.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        s.textColor = Theme.Color.ink2
+        s.textAlignment = .center
+        s.numberOfLines = 0
+
+        [q, t, s].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; emptyStateView.addSubview($0) }
+        NSLayoutConstraint.activate([
+            q.topAnchor.constraint(equalTo: emptyStateView.topAnchor, constant: 20),
+            q.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            q.widthAnchor.constraint(equalToConstant: 48), q.heightAnchor.constraint(equalToConstant: 56),
+            t.topAnchor.constraint(equalTo: q.bottomAnchor, constant: 12),
+            t.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor, constant: 16),
+            t.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor, constant: -16),
+            s.topAnchor.constraint(equalTo: t.bottomAnchor, constant: 4),
+            s.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor, constant: 16),
+            s.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor, constant: -16),
+            s.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor, constant: -20),
+        ])
+    }
+
     private func configureActions() {
-        // UIAction: associa evento a closure (alternativa moderna a target-action/Selector em muitos casos).
-        // [weak self] evita retenção cíclica entre a view e as closures armazenadas nos controles.
-
         questionTextField.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            self.onQuestionChanged?(self.questionTextField.text ?? "")
+            self?.onQuestionChanged?(self?.questionTextField.text ?? "")
         }, for: .editingChanged)
 
         addOptionButton.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            let text = self.newOptionTextField.text ?? ""
-            self.onAddOption?(text)
+            self?.onAddOption?(self?.newOptionTextField.text ?? "")
         }, for: .touchUpInside)
 
         drawButton.addAction(UIAction { [weak self] _ in
@@ -187,273 +239,274 @@ final class DecisionView: UIView {
         }, for: .touchUpInside)
     }
 
-    // MARK: - Teclado (configuração)
+    // MARK: - Hierarquia e layout
 
-    /// Configura gesto para dispensar teclado e observação de mudanças do frame do teclado.
-    private func configureKeyboardHandling() {
-        // Toque fora dos campos fecha o teclado.
-        // `cancelsTouchesInView = false` permite que botões continuem recebendo toques.
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
-        tapGesture.cancelsTouchesInView = false
-        addGestureRecognizer(tapGesture)
-
-        // Observa mudanças de frame do teclado (abrir/fechar/alterar altura, ex.: sugestões).
-        // Usamos closure com [weak self] para evitar reter a view indevidamente.
-        let changeObserver = NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillChangeFrameNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            self?.adjustForKeyboard(notification: notification)
-        }
-
-        keyboardObservers = [changeObserver]
-    }
-
-    // MARK: - Hierarquia
-
-    /// Monta a árvore de subviews.
     private func buildHierarchy() {
-        // Linha de adição: campo + botão.
-        addOptionRowStack.addArrangedSubview(newOptionTextField)
-        addOptionRowStack.addArrangedSubview(addOptionButton)
+        let spacer = UIView()
+        optionsHeaderStack.addArrangedSubview(optionsTitleLabel)
+        optionsHeaderStack.addArrangedSubview(spacer)
+        optionsHeaderStack.addArrangedSubview(minLabel)
+        optionsHeaderStack.addArrangedSubview(optionsCountBadge)
 
-        // Conteúdo principal na ordem vertical.
-        [promptLabel, questionTextField, optionsTitleLabel, optionsListStack, addOptionRowStack, drawButton]
-            .forEach { contentStack.addArrangedSubview($0) }
+        addRowStack.addArrangedSubview(newOptionTextField)
+        addRowStack.addArrangedSubview(addOptionButton)
 
-        // Scroll contém a stack; a view contém a scroll.
+        [titleLabel, subtitleLabel,
+         questionSectionLabel, questionTextField,
+         optionsHeaderStack, addRowStack, emptyStateView, optionsListStack,
+         hintLabel, drawButton
+        ].forEach { contentStack.addArrangedSubview($0) }
+
         scrollView.addSubview(contentStack)
         addSubview(scrollView)
     }
 
-    // MARK: - Layout (Auto Layout)
-
-    /// Cria e ativa as constraints.
     private func activateConstraints() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentStack.translatesAutoresizingMaskIntoConstraints = false
-
-        // Guides: conteúdo rolável vs área visível.
         let content = scrollView.contentLayoutGuide
         let frame = scrollView.frameLayoutGuide
-
-        // Largura preenchendo com margens (prioridade alta, permitindo limite no iPad).
         let fillWidth = contentStack.widthAnchor.constraint(
-            equalTo: safeAreaLayoutGuide.widthAnchor,
-            constant: -2 * Theme.Spacing.large
+            equalTo: safeAreaLayoutGuide.widthAnchor, constant: -2 * 20
         )
         fillWidth.priority = .defaultHigh
-
         NSLayoutConstraint.activate([
-            // Scroll view na área segura.
             scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
-
-            // Somente rolagem vertical.
             content.widthAnchor.constraint(equalTo: frame.widthAnchor),
-
-            // Posicionamento e limites da stack.
             contentStack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            contentStack.topAnchor.constraint(equalTo: content.topAnchor, constant: Theme.Spacing.large),
-            contentStack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Theme.Spacing.large),
+            contentStack.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            contentStack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -32),
             contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: Theme.Layout.maxContentWidth),
-            fillWidth
+            fillWidth,
+            questionTextField.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            newOptionTextField.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            addOptionButton.heightAnchor.constraint(equalToConstant: 52),
         ])
     }
 
-    // MARK: - API para o controller (atualização de UI)
+    // MARK: - API pública (compatível com controller)
 
-    /// Reconstroi a lista visual de opções com base no estado atual do Model.
-    /// Cada linha contém o texto e botões de editar/remover.
     func displayOptions(_ options: [String]) {
-        // Remove linhas antigas para evitar duplicação/estado inconsistente.
-        optionsListStack.arrangedSubviews.forEach { view in
-            optionsListStack.removeArrangedSubview(view)
-            view.removeFromSuperview()
+        optionsListStack.arrangedSubviews.forEach { v in
+            optionsListStack.removeArrangedSubview(v); v.removeFromSuperview()
         }
-
-        // Cria uma linha por opção, preservando o índice correspondente no Model.
         for (index, option) in options.enumerated() {
             optionsListStack.addArrangedSubview(makeOptionRow(text: option, index: index))
         }
-
-        // Oculta a lista quando vazia.
+        currentOptionCount = options.count
+        emptyStateView.isHidden = !options.isEmpty
         optionsListStack.isHidden = options.isEmpty
+        optionsCountBadge.text = "\(options.count)/\(Decision.maxOptions)"
+
+        // Cor do badge conforme estado (como no protótipo).
+        if options.count >= Decision.maxOptions {
+            optionsCountBadge.backgroundColor = Theme.Color.dangerSoft
+            optionsCountBadge.textColor = Theme.Color.danger
+        } else if options.count >= Decision.minOptions {
+            optionsCountBadge.backgroundColor = Theme.Color.accentSoft
+            optionsCountBadge.textColor = Theme.Color.accentText
+        } else {
+            optionsCountBadge.backgroundColor = Theme.Color.surface2
+            optionsCountBadge.textColor = Theme.Color.ink2
+        }
     }
 
-    /// Limpa o campo de nova alternativa (após adição bem-sucedida).
-    func clearNewOptionField() {
-        newOptionTextField.text = ""
-    }
+    func clearNewOptionField() { newOptionTextField.text = "" }
 
-    /// Atualiza o estado habilitado do botão "Sortear".
     func setDrawEnabled(_ enabled: Bool) {
         drawButton.isEnabled = enabled
+        // Garante atualização visual do botão (configuração/estado).
+        drawButton.setNeedsUpdateConfiguration()
+        updateHint(enabled: enabled)
     }
 
-    // MARK: - Construção de linhas de opção
+    private func updateHint(enabled: Bool) {
+        let n = currentOptionCount
+        if n == 0 {
+            hintLabel.text = "Adicione pelo menos \(Decision.minOptions) opções para sortear"
+            hintLabel.textColor = Theme.Color.ink2
+        } else if n < Decision.minOptions {
+            hintLabel.text = "Falta 1 opção para sortear"
+            hintLabel.textColor = Theme.Color.ink2
+        } else if n >= Decision.maxOptions {
+            hintLabel.text = "Limite de \(Decision.maxOptions) opções atingido"
+            hintLabel.textColor = Theme.Color.danger
+        } else {
+            hintLabel.text = "\(n) opções prontas para o sorteio"
+            hintLabel.textColor = enabled ? Theme.Color.accentText : Theme.Color.ink2
+        }
+    }
 
-    /// Cria uma linha horizontal: [texto] [editar] [remover].
+    // MARK: - Linha de opção (cartão)
+
     private func makeOptionRow(text: String, index: Int) -> UIView {
-        // Container horizontal da linha.
-        let rowStack = UIStackView()
-        rowStack.axis = .horizontal
-        // Alinha ao topo para ficar correto quando o texto ocupa múltiplas linhas.
-        rowStack.alignment = .top
-        rowStack.spacing = Theme.Spacing.small
+        let card = UIView()
+        card.backgroundColor = Theme.Color.surface
+        card.layer.cornerRadius = 16
+        card.layer.cornerCurve = .continuous
+        card.layer.borderWidth = 1
+        card.layer.borderColor = Theme.Color.line.resolvedColor(with: traitCollection).cgColor
 
-        // Label da opção: expande e pode quebrar em várias linhas.
+        let badge = UILabel()
+        badge.text = "\(index + 1)"
+        badge.font = Theme.Font.display(size: 15, weight: .black)
+        badge.textColor = Theme.Color.limeInk
+        badge.textAlignment = .center
+        badge.backgroundColor = Theme.Color.optionPalette[index % Theme.Color.optionPalette.count]
+        badge.layer.cornerRadius = 10
+        badge.clipsToBounds = true
+
         let label = UILabel()
         label.text = text
-        label.font = .preferredFont(forTextStyle: .body)
+        label.font = UIFont.preferredFont(forTextStyle: .body).withWeight(.semibold)
         label.adjustsFontForContentSizeCategory = true
-        label.textColor = Theme.Color.primaryText
+        label.textColor = Theme.Color.ink
         label.numberOfLines = 0
-        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        // Botão editar (ícone SF Symbol).
-        let editButton = UIButton(type: .system)
-        editButton.setImage(UIImage(systemName: "pencil"), for: .normal)
-        editButton.tintColor = Theme.Color.accent
-        editButton.accessibilityLabel = "Editar opção"
-        editButton.accessibilityValue = text
-        editButton.setContentHuggingPriority(.required, for: .horizontal)
-        editButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // Captura o índice atual desta linha ao tocar.
-        editButton.addAction(UIAction { [weak self] _ in
+        let editButton = makeIconAction(system: "pencil", tint: Theme.Color.accentText, bg: Theme.Color.accentSoft, a11y: "Editar opção", value: text) { [weak self] in
             self?.onEditOption?(index)
-        }, for: .touchUpInside)
-
-        // Botão remover (ícone SF Symbol, cor destrutiva).
-        let removeButton = UIButton(type: .system)
-        removeButton.setImage(UIImage(systemName: "trash"), for: .normal)
-        removeButton.tintColor = .systemRed
-        removeButton.accessibilityLabel = "Remover opção"
-        removeButton.accessibilityValue = text
-        removeButton.setContentHuggingPriority(.required, for: .horizontal)
-        removeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-        removeButton.addAction(UIAction { [weak self] _ in
+        }
+        let removeButton = makeIconAction(system: "trash", tint: Theme.Color.danger, bg: Theme.Color.dangerSoft, a11y: "Remover opção", value: text) { [weak self] in
             self?.onRemoveOption?(index)
-        }, for: .touchUpInside)
+        }
 
-        // Ordem: texto à esquerda, ações à direita.
-        rowStack.addArrangedSubview(label)
-        rowStack.addArrangedSubview(editButton)
-        rowStack.addArrangedSubview(removeButton)
+        [badge, label, editButton, removeButton].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; card.addSubview($0) }
+        NSLayoutConstraint.activate([
+            badge.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            badge.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 32), badge.heightAnchor.constraint(equalToConstant: 32),
 
-        return rowStack
+            label.leadingAnchor.constraint(equalTo: badge.trailingAnchor, constant: 12),
+            label.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            label.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14),
+
+            removeButton.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -6),
+            removeButton.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            editButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -2),
+            editButton.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: editButton.leadingAnchor, constant: -8),
+            card.heightAnchor.constraint(greaterThanOrEqualToConstant: 64),
+        ])
+        return card
     }
 
-    // MARK: - Teclado (comportamento)
-
-    /// Campo atualmente em edição (referência fraca para não reter a view indevidamente).
-    private weak var activeTextField: UITextField?
-
-    /// Folga extra ao rolar até o campo ativo, evitando que fique colado ao teclado.
-    private let keyboardScrollPadding: CGFloat = 48
-
-    /// Fecha o teclado (encerra edição) ao tocar fora dos campos.
-    @objc private func dismissKeyboard() {
-        endEditing(true)
+    private func makeIconAction(system: String, tint: UIColor, bg: UIColor, a11y: String, value: String, action: @escaping () -> Void) -> UIButton {
+        let b = UIButton(type: .system)
+        var cfg = UIButton.Configuration.plain()
+        cfg.image = UIImage(systemName: system, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
+        cfg.baseForegroundColor = tint
+        cfg.background.backgroundColor = bg
+        cfg.cornerStyle = .capsule
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
+        b.configuration = cfg
+        b.accessibilityLabel = a11y
+        b.accessibilityValue = value
+        b.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        b.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        b.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        return b
     }
 
-    /// Ajusta insets da scroll conforme o frame do teclado e mantém o campo ativo visível.
+    // MARK: - Teclado
+
+    private func configureKeyboardHandling() {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tap.cancelsTouchesInView = false
+        addGestureRecognizer(tap)
+        let obs = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main
+        ) { [weak self] n in self?.adjustForKeyboard(notification: n) }
+        keyboardObservers = [obs]
+    }
+
+    @objc private func dismissKeyboard() { endEditing(true) }
+
     private func adjustForKeyboard(notification: Notification) {
-        guard
-            let userInfo = notification.userInfo,
-            let keyboardFrameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue
-        else { return }
-
-        // Converte o frame do teclado para coordenadas desta view.
-        let keyboardFrameInView = convert(keyboardFrameValue.cgRectValue, from: nil)
-
-        // Calcula a área de interseção com a scroll view (quanto está coberto).
-        let intersection = scrollView.frame.intersection(keyboardFrameInView)
+        guard let userInfo = notification.userInfo,
+              let frameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
+        let kbFrame = convert(frameValue.cgRectValue, from: nil)
+        let intersection = scrollView.frame.intersection(kbFrame)
         let bottomInset = max(0, intersection.height - safeAreaInsets.bottom)
-
-        // Obtém parâmetros de animação do teclado para sincronizar o movimento.
         let duration = userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? UIView.AnimationOptions.curveEaseInOut.rawValue
         let options = UIView.AnimationOptions(rawValue: curveRaw << 16)
-
-        // Anima ajuste de insets; ao final, garante visibilidade do campo ativo.
         UIView.animate(withDuration: duration, delay: 0, options: options) {
             self.scrollView.contentInset.bottom = bottomInset
             self.scrollView.verticalScrollIndicatorInsets.bottom = bottomInset
             self.layoutIfNeeded()
         } completion: { _ in
-            if bottomInset > 0 {
-                self.scrollActiveFieldIntoViewIfNeeded(animated: true)
-            }
+            if bottomInset > 0 { self.scrollActiveFieldIntoViewIfNeeded() }
         }
     }
 
-    /// Rola a scroll view para tornar o campo ativo visível com margem confortável.
     private func scrollActiveFieldIntoViewIfNeeded(animated: Bool = true) {
         guard let activeTextField else { return }
-
-        // Converte o retângulo do campo para o sistema de coordenadas da scroll view.
-        let fieldFrameInScrollView = activeTextField.convert(activeTextField.bounds, to: scrollView)
-        // Expande o retângulo para criar folga acima/abaixo.
-        let paddedFrame = fieldFrameInScrollView.insetBy(dx: 0, dy: -keyboardScrollPadding)
-
-        // Solicita à scroll que torne o retângulo visível.
-        scrollView.scrollRectToVisible(paddedFrame, animated: animated)
+        let rect = activeTextField.convert(activeTextField.bounds, to: scrollView)
+        scrollView.scrollRectToVisible(rect.insetBy(dx: 0, dy: -keyboardScrollPadding), animated: animated)
     }
 
     // MARK: - Helpers
 
-    /// Cria labels com fonte dinâmica e estilo consistente.
-    private static func makeLabel(
-        text: String,
-        textStyle: UIFont.TextStyle,
-        color: UIColor,
-        bold: Bool = false
-    ) -> UILabel {
-        let label = UILabel()
-        label.text = text
+    private static func makeSectionLabel(_ text: String) -> UILabel {
+        let l = UILabel()
+        l.text = text
+        l.font = UIFont.preferredFont(forTextStyle: .caption1).withWeight(.bold)
+        l.adjustsFontForContentSizeCategory = true
+        l.textColor = Theme.Color.ink2
+        return l
+    }
 
-        var font = UIFont.preferredFont(forTextStyle: textStyle)
-        if bold, let descriptor = font.fontDescriptor.withSymbolicTraits(.traitBold) {
-            font = UIFont(descriptor: descriptor, size: 0)
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true {
+            [questionTextField, newOptionTextField].forEach {
+                $0.layer.borderColor = Theme.Color.line.resolvedColor(with: traitCollection).cgColor
+            }
         }
-
-        label.font = font
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = color
-        label.numberOfLines = 0
-        return label
     }
 }
 
 // MARK: - UITextFieldDelegate
-
 extension DecisionView: UITextFieldDelegate {
-
-    /// Ao iniciar edição, guarda o campo ativo e garante que ele fique visível.
     func textFieldDidBeginEditing(_ textField: UITextField) {
         activeTextField = textField
-        // Agenda para o próximo ciclo da run loop, após ajustes de layout/insets.
-        DispatchQueue.main.async { [weak self] in
-            self?.scrollActiveFieldIntoViewIfNeeded(animated: true)
-        }
+        DispatchQueue.main.async { [weak self] in self?.scrollActiveFieldIntoViewIfNeeded() }
     }
-
-    /// Ao encerrar edição, limpa a referência se for o campo ativo.
     func textFieldDidEndEditing(_ textField: UITextField) {
-        if activeTextField == textField {
-            activeTextField = nil
-        }
+        if activeTextField == textField { activeTextField = nil }
     }
-
-    /// Trata a tecla "Return/Done" fechando o teclado.
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        return true
+        textField.resignFirstResponder(); return true
+    }
+}
+
+// MARK: - Componentes auxiliares
+
+/// UITextField com padding interno para combinar com o estilo do protótipo.
+private final class PaddedTextField: UITextField {
+    var insets = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+    override func textRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
+    override func editingRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
+    override func placeholderRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
+}
+
+/// UILabel com padding (usada no badge de contagem).
+private final class PaddingLabel: UILabel {
+    var insets = UIEdgeInsets.zero
+    override func drawText(in rect: CGRect) { super.drawText(in: rect.inset(by: insets)) }
+    override var intrinsicContentSize: CGSize {
+        let s = super.intrinsicContentSize
+        return CGSize(width: s.width + insets.left + insets.right, height: s.height + insets.top + insets.bottom)
+    }
+}
+
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let d = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+        return UIFont(descriptor: d, size: pointSize)
     }
 }
 

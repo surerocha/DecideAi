@@ -9,50 +9,40 @@ import UIKit
 
 // MARK: - Controller da Home
 
-/// Controller da tela inicial.
-/// Responsabilidades (MVC):
-/// - fornecer a view da tela (`loadView`);
-/// - configurar comportamentos de navegação;
-/// - conectar eventos da view (callbacks) a ações (navegar).
-///
-/// Não cria componentes visuais detalhados; isso fica em `HomeView`.
+/// Controller da tela inicial. Coordena navegação e aparência da barra na Home
+/// (a Home usa visual imersivo com gradiente, então a navigation bar fica oculta).
 final class HomeViewController: UIViewController {
 
-    // Instância da view customizada da Home.
     private let homeView = HomeView()
 
-    // MARK: - Ciclo de vida da view
-
-    /// Chamado quando o controller precisa criar sua `view`.
-    /// Aqui substituímos a view padrão por `homeView`.
-    /// Esse padrão mantém a separação: View cuida da UI, Controller coordena.
     override func loadView() {
         view = homeView
     }
 
-    /// Chamado após a view ser carregada em memória.
-    /// Usado para configurações iniciais que dependem da view já existente.
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        // Define o título do botão "voltar" exibido nas telas empilhadas depois desta.
-        // Como a Home não define `title`, sem isso o botão poderia aparecer como "Back".
+        // Texto do botão "voltar" nas telas seguintes.
         navigationItem.backButtonTitle = "Início"
-
-        // Conecta o evento da view à navegação.
-        // `[weak self]` evita ciclo de retenção caso a view mantenha a closure e o controller mantenha a view.
         homeView.onStartTapped = { [weak self] in
             self?.showDecisionScreen()
         }
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Home em tela cheia com gradiente: esconde a barra para seguir o protótipo.
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Restaura a barra para as próximas telas.
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+
     // MARK: - Navegação
 
-    /// Empilha a tela de criação de decisão no `UINavigationController`.
     private func showDecisionScreen() {
-        // `pushViewController` adiciona o controller ao topo da pilha.
-        // `animated: true` aplica a animação padrão de transição.
-        // `navigationController` é opcional (nil se o controller não estiver em uma pilha).
         navigationController?.pushViewController(DecisionViewController(), animated: true)
     }
 }

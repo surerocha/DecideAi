@@ -77,6 +77,14 @@ final class ResultViewController: UIViewController {
 
         title = "Resultado"
 
+        // Aparência da barra sobre o gradiente.
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
+        navigationController?.navigationBar.tintColor = .white
+
         // Exibe a pergunta da decisão e conecta ações.
         resultView.setQuestion(decision.displayQuestion)
         bindViewActions()

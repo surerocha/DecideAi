@@ -7,46 +7,123 @@
 
 import UIKit
 
-// MARK: - Tema visual (constantes compartilhadas)
+// MARK: - Tema visual (identidade "Decide Aí")
 
-/// `Theme` centraliza constantes visuais para manter consistência entre as telas.
-/// Usamos `enum` sem casos (e `enum`s aninhados) como *namespace*: ele agrupa valores
-/// estáticos e não precisa (nem deve) ser instanciado.
+/// `Theme` centraliza tokens visuais (cores, gradientes, tipografia, espaçamentos e raios)
+/// inspirados no protótipo do Figma. Usamos `enum` como *namespace* (sem instâncias).
 ///
-/// Benefício: se quisermos ajustar uma cor ou espaçamento, mudamos em um lugar só.
+/// Mantemos compatibilidade com os nomes usados antes (`Color.accent/background/...`,
+/// `Spacing`, `Layout`) para não quebrar telas existentes, e adicionamos tokens da nova
+/// identidade. Cores dinâmicas se adaptam a Light/Dark Mode.
 enum Theme {
 
-    // MARK: - Cores
+    // MARK: - Cores base (tokens do protótipo)
 
-    /// Paleta de cores do app.
-    /// Preferimos cores semânticas do sistema (`UIColor.system*`, `.label`, etc.)
-    /// porque elas se adaptam automaticamente a:
-    /// - modo claro/escuro (Light/Dark Mode);
-    /// - configurações de acessibilidade (ex.: aumentar contraste);
-    /// - diferentes contextos do iOS.
+    /// Paleta semântica da identidade visual (baseada em `index.css` do protótipo).
     enum Color {
-        // Cor de destaque principal (botões, tint, ícones de destaque).
-        // Pode ser substituída futuramente por uma cor nomeada no Assets.xcassets.
-        static let accent = UIColor.systemIndigo
+        // --- Tokens legados (compatibilidade) ---
+        static let accent = brand
+        static let background = canvas
+        static let secondaryBackground = surface2
+        static let primaryText = ink
+        static let secondaryText = ink2
 
-        // Fundo principal das telas.
-        static let background = UIColor.systemBackground
+        // --- Canvas / superfícies ---
+        /// Fundo principal das telas claras de conteúdo.
+        static let canvas = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x0F0B24)
+                : UIColor(hex: 0xF3F1FA)
+        }
+        static let surface = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x1B1640)
+                : UIColor.white
+        }
+        static let surface2 = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x282156)
+                : UIColor(hex: 0xEAE6F8)
+        }
 
-        // Fundo secundário (útil para cartões/áreas agrupadas, se necessário).
-        static let secondaryBackground = UIColor.secondarySystemBackground
+        // --- Tinta (texto) ---
+        static let ink = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xF4F2FF)
+                : UIColor(hex: 0x16113A)
+        }
+        static let ink2 = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xA8A3D3)
+                : UIColor(hex: 0x5B5683)
+        }
+        static let line = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor.white.withAlphaComponent(0.12)
+                : UIColor(hex: 0x16113A).withAlphaComponent(0.10)
+        }
 
-        // Cor de texto principal.
-        static let primaryText = UIColor.label
+        // --- Marca / destaque ---
+        static let brand = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x6C4BFF)
+                : UIColor(hex: 0x5B3DF5)
+        }
+        static let accentText = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xA99BFF)
+                : UIColor(hex: 0x4A2FD6)
+        }
+        static let accentSoft = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xA99BFF).withAlphaComponent(0.16)
+                : UIColor(hex: 0x5B3DF5).withAlphaComponent(0.12)
+        }
+        static let lime = UIColor(hex: 0xC8F53C)
+        static let limeInk = UIColor(hex: 0x16113A)
+        static let coral = UIColor(hex: 0xFF6F91)
 
-        // Cor de texto secundário/apoio.
-        static let secondaryText = UIColor.secondaryLabel
+        // --- Perigo/erro ---
+        static let danger = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xFF6B87)
+                : UIColor(hex: 0xC21C3E)
+        }
+        static let dangerSoft = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x3A1530)
+                : UIColor(hex: 0xFDE6EB)
+        }
+
+        // --- Gradiente de marca (Home/Resultado) ---
+        static let brand1 = UIColor { t in
+            t.userInterfaceStyle == .dark ? UIColor(hex: 0x4D31DE) : UIColor(hex: 0x6A4BFF)
+        }
+        static let brand2 = UIColor { t in
+            t.userInterfaceStyle == .dark ? UIColor(hex: 0x281B92) : UIColor(hex: 0x3F26D4)
+        }
+        static let brand3 = UIColor { t in
+            t.userInterfaceStyle == .dark ? UIColor(hex: 0x120B3F) : UIColor(hex: 0x230F86)
+        }
+
+        /// Texto sobre fundos de marca/gradiente.
+        static let onBrand = UIColor.white
+        static let onBrandMuted = UIColor.white.withAlphaComponent(0.75)
+
+        /// Cores para badges numeradas das opções (inspiradas no protótipo).
+        static let optionPalette: [UIColor] = [
+            UIColor(hex: 0xC8F53C), UIColor(hex: 0xFF8FA8), UIColor(hex: 0x8FD3FF),
+            UIColor(hex: 0xFFC857), UIColor(hex: 0xB9A6FF), UIColor(hex: 0x7BE0B5),
+            UIColor(hex: 0xFFA07A), UIColor(hex: 0xE3A6FF), UIColor(hex: 0x9BE564),
+            UIColor(hex: 0x7FB5FF)
+        ]
     }
 
     // MARK: - Espaçamentos
 
-    /// Valores de espaçamento reutilizáveis (margens, espaços em stacks, etc.).
-    /// Manter uma escala consistente ajuda no ritmo visual da interface.
+    /// Escala de espaçamento reutilizável.
     enum Spacing {
+        static let xSmall: CGFloat = 4
         static let small: CGFloat = 8
         static let medium: CGFloat = 16
         static let large: CGFloat = 24
@@ -55,18 +132,63 @@ enum Theme {
 
     // MARK: - Layout
 
-    /// Constantes relacionadas a medidas e limites de layout.
+    /// Medidas e raios de layout.
     enum Layout {
-        // Raio de canto padrão para elementos com bordas arredondadas (quando aplicável).
         static let cornerRadius: CGFloat = 14
-
-        // Altura mínima confortável para áreas tocáveis.
-        // A Apple recomenda pelo menos 44pt; usamos 50pt para conforto.
+        static let cardRadius: CGFloat = 22
+        static let fieldRadius: CGFloat = 14
+        static let buttonRadius: CGFloat = 18
         static let minimumTapHeight: CGFloat = 50
-
-        // Largura máxima do conteúdo. Em iPad ou iPhone landscape, evita que o conteúdo
-        // estique demais e fique difícil de ler/tocar; o conteúdo fica centralizado/limitado.
         static let maxContentWidth: CGFloat = 560
+    }
+
+    // MARK: - Tipografia
+
+    /// Helpers de fonte. Priorizamos Dynamic Type (text styles) para acessibilidade.
+    /// Onde o protótipo usa fonte "display" pesada, aproximamos com SF Pro arredondada/black.
+    enum Font {
+        static func display(size: CGFloat, weight: UIFont.Weight = .black) -> UIFont {
+            if let descriptor = UIFont.systemFont(ofSize: size, weight: weight).fontDescriptor
+                .withDesign(.rounded) {
+                return UIFont(descriptor: descriptor, size: size)
+            }
+            return UIFont.systemFont(ofSize: size, weight: weight)
+        }
+        static func scaledDisplay(baseSize: CGFloat, weight: UIFont.Weight = .black, textStyle: UIFont.TextStyle) -> UIFont {
+            let base = display(size: baseSize, weight: weight)
+            return UIFontMetrics(forTextStyle: textStyle).scaledFont(for: base)
+        }
+    }
+
+    // MARK: - Gradientes
+
+    /// Cria/atualiza um `CAGradientLayer` com o gradiente de marca (roxo) do protótipo.
+    /// - Parameters:
+    ///   - layer: camada a configurar (reutilize para evitar acumular camadas).
+    ///   - trait: trait collection para resolver cores dinâmicas (light/dark).
+    /// - Returns: a camada configurada.
+    @discardableResult
+    static func applyBrandGradient(to layer: CAGradientLayer, trait: UITraitCollection) -> CAGradientLayer {
+        layer.colors = [
+            Color.brand1.resolvedColor(with: trait).cgColor,
+            Color.brand2.resolvedColor(with: trait).cgColor,
+            Color.brand3.resolvedColor(with: trait).cgColor
+        ]
+        layer.startPoint = CGPoint(x: 0.1, y: 0.0)
+        layer.endPoint = CGPoint(x: 0.9, y: 1.0)
+        return layer
+    }
+}
+
+// MARK: - Utilitário de cor (hex)
+
+extension UIColor {
+    /// Cria uma cor a partir de um inteiro hexadecimal RGB (ex.: 0x5B3DF5).
+    convenience init(hex: Int, alpha: CGFloat = 1.0) {
+        let r = CGFloat((hex >> 16) & 0xFF) / 255.0
+        let g = CGFloat((hex >> 8) & 0xFF) / 255.0
+        let b = CGFloat(hex & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b, alpha: alpha)
     }
 }
 

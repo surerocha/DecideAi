@@ -7,246 +7,264 @@
 
 import UIKit
 
-// MARK: - View da tela de resultado
+// MARK: - View do sorteio/resultado (identidade Figma)
 
-/// Parte visual da tela de resultado do sorteio.
-/// Responsabilidades:
-/// - exibir pergunta e o texto do resultado (durante a animação e no final);
-/// - expor ações do usuário por callbacks ("Sortear novamente", "Nova decisão");
-/// - oferecer APIs simples para o controller controlar conteúdo, acessibilidade e estado dos botões.
-///
-/// Não conhece navegação, não gera sorteios e não aplica regras de negócio.
+/// Tela de sorteio com fundo gradiente de marca, cartão central de resultado e ações.
+/// Mantém a API usada pelo `ResultViewController` (`setQuestion`, `showOption`,
+/// `setActionsEnabled`, `setWinnerAccessibilityHidden`) para não quebrar a lógica/animação.
 final class ResultView: UIView {
 
-    // MARK: - Callbacks (View -> Controller)
+    // MARK: - Callbacks
 
-    /// Chamado quando o usuário toca em "Sortear novamente".
     var onTryAgainTapped: (() -> Void)?
-
-    /// Chamado quando o usuário toca em "Nova decisão".
     var onNewDecisionTapped: (() -> Void)?
 
-    // MARK: - Componentes de UI
+    // MARK: - UI
 
-    // Scroll view para suportar conteúdos maiores/fontes grandes.
+    private let gradientLayer = CAGradientLayer()
+    private let glowLime = UIView()
+    private let glowPink = UIView()
+
     private let scrollView = UIScrollView()
-
-    // Stack vertical que organiza todos os elementos com espaçamentos.
     private let contentStack = UIStackView()
 
-    // Rótulo "Pergunta" (título da seção).
-    private let questionTitleLabel = ResultView.makeLabel(
-        text: "Pergunta",
-        textStyle: .headline,
-        color: Theme.Color.secondaryText,
-        bold: true
-    )
+    private let questionCaptionLabel = UILabel()
+    private let questionLabel = UILabel()
 
-    // Texto da pergunta sorteada.
-    private let questionLabel = ResultView.makeLabel(
-        text: "",
-        textStyle: .title3,
-        color: Theme.Color.primaryText,
-        bold: false
-    )
+    private let statusLabel = UILabel()
+    private let resultCard = UIView()
+    private let optionLabel = UILabel()
 
-    // Rótulo "Resultado" (título da seção).
-    private let winnerTitleLabel = ResultView.makeLabel(
-        text: "Resultado",
-        textStyle: .headline,
-        color: Theme.Color.secondaryText,
-        bold: true
-    )
-
-    // Destaque do resultado: durante a animação mostra as opções trocando;
-    // ao final mostra o vencedor.
-    private let winnerLabel = ResultView.makeLabel(
-        text: "",
-        textStyle: .largeTitle,
-        color: Theme.Color.accent,
-        bold: true
-    )
-
-    // Pilha para os botões de ação.
     private let actionsStack = UIStackView()
+    private let tryAgainButton = PrimaryButton(title: "Sortear novamente", style: .lime)
+    private let newDecisionButton = PrimaryButton(title: "Nova decisão", style: .glass)
 
-    // Ação principal: refaz o sorteio com a mesma decisão.
-    private let tryAgainButton = PrimaryButton(title: "Sortear novamente")
+    // Indica se estamos exibindo o estado final (para realçar o cartão).
+    private var isFinalState = false
 
-    // Ação secundária: volta ao início para criar outra decisão.
-    private let newDecisionButton = UIButton(type: .system)
-
-    // MARK: - Inicialização
+    // MARK: - Init
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        // Pipeline padrão: configurar -> conectar ações -> montar hierarquia -> layout.
         configureViews()
         configureActions()
         buildHierarchy()
         activateConstraints()
     }
 
-    /// Inicializador de storyboard/XIB (não suportado).
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        gradientLayer.frame = bounds
+        Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
+        glowLime.layer.cornerRadius = glowLime.bounds.height / 2
+        glowPink.layer.cornerRadius = glowPink.bounds.height / 2
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true {
+            Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
+        }
     }
 
     // MARK: - Configuração
 
-    /// Configura aparência e propriedades dos componentes.
     private func configureViews() {
-        backgroundColor = Theme.Color.background
+        layer.insertSublayer(gradientLayer, at: 0)
+        Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
 
-        // Stack principal: coluna, preenchendo largura.
+        glowLime.backgroundColor = Theme.Color.lime.withAlphaComponent(0.20)
+        glowPink.backgroundColor = Theme.Color.coral.withAlphaComponent(0.22)
+        glowLime.isUserInteractionEnabled = false
+        glowPink.isUserInteractionEnabled = false
+
+        questionCaptionLabel.text = "SUA PERGUNTA"
+        questionCaptionLabel.font = UIFont.preferredFont(forTextStyle: .caption1).withWeight(.bold)
+        questionCaptionLabel.adjustsFontForContentSizeCategory = true
+        questionCaptionLabel.textColor = Theme.Color.onBrandMuted
+        questionCaptionLabel.textAlignment = .center
+
+        questionLabel.font = Theme.Font.scaledDisplay(baseSize: 22, weight: .heavy, textStyle: .title3)
+        questionLabel.adjustsFontForContentSizeCategory = true
+        questionLabel.textColor = .white
+        questionLabel.textAlignment = .center
+        questionLabel.numberOfLines = 0
+
+        statusLabel.text = "Sorteando..."
+        statusLabel.font = Theme.Font.scaledDisplay(baseSize: 24, weight: .black, textStyle: .title2)
+        statusLabel.adjustsFontForContentSizeCategory = true
+        statusLabel.textColor = .white
+        statusLabel.textAlignment = .center
+
+        // Cartão central onde a opção anima/aparece.
+        resultCard.backgroundColor = Theme.Color.surface
+        resultCard.layer.cornerRadius = 32
+        resultCard.layer.cornerCurve = .continuous
+        resultCard.layer.shadowColor = UIColor.black.cgColor
+        resultCard.layer.shadowOpacity = 0.25
+        resultCard.layer.shadowRadius = 24
+        resultCard.layer.shadowOffset = CGSize(width: 0, height: 16)
+
+        optionLabel.font = Theme.Font.scaledDisplay(baseSize: 40, weight: .black, textStyle: .largeTitle)
+        optionLabel.adjustsFontForContentSizeCategory = true
+        optionLabel.textColor = Theme.Color.ink
+        optionLabel.textAlignment = .center
+        optionLabel.numberOfLines = 0
+        optionLabel.accessibilityTraits = .header
+
+        actionsStack.axis = .vertical
+        actionsStack.alignment = .fill
+        actionsStack.spacing = 10
+
+        // Ícones nos botões para aproximar do protótipo.
+        if var c = tryAgainButton.configuration {
+            c.image = UIImage(systemName: "arrow.clockwise", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
+            c.imagePadding = 8
+            tryAgainButton.configuration = c
+        }
+        if var c = newDecisionButton.configuration {
+            c.image = UIImage(systemName: "house", withConfiguration: UIImage.SymbolConfiguration(weight: .semibold))
+            c.imagePadding = 8
+            newDecisionButton.configuration = c
+        }
+        tryAgainButton.accessibilityHint = "Realiza um novo sorteio com as mesmas opções."
+        newDecisionButton.accessibilityHint = "Volta ao início para criar uma nova decisão."
+
         contentStack.axis = .vertical
         contentStack.alignment = .fill
         contentStack.spacing = Theme.Spacing.medium
-        // Espaçamentos extras para separar blocos lógicos.
+        contentStack.setCustomSpacing(4, after: questionCaptionLabel)
         contentStack.setCustomSpacing(Theme.Spacing.large, after: questionLabel)
-        contentStack.setCustomSpacing(Theme.Spacing.small, after: winnerTitleLabel)
-        contentStack.setCustomSpacing(Theme.Spacing.extraLarge, after: winnerLabel)
-
-        // Centralização dos textos para destacar a pergunta e o resultado.
-        questionTitleLabel.textAlignment = .center
-        questionLabel.textAlignment = .center
-        winnerTitleLabel.textAlignment = .center
-        winnerLabel.textAlignment = .center
-
-        // Marca o resultado como cabeçalho para acessibilidade.
-        winnerLabel.accessibilityTraits = .header
-
-        // Stack de ações (botões).
-        actionsStack.axis = .vertical
-        actionsStack.alignment = .fill
-        actionsStack.spacing = Theme.Spacing.small
-
-        // Dica de acessibilidade do botão principal.
-        tryAgainButton.accessibilityHint = "Realiza um novo sorteio com as mesmas opções."
-
-        // Botão secundário em estilo de sistema (menos destaque que o primário).
-        newDecisionButton.setTitle("Nova decisão", for: .normal)
-        newDecisionButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
-        newDecisionButton.titleLabel?.adjustsFontForContentSizeCategory = true
-        newDecisionButton.tintColor = Theme.Color.accent
-        newDecisionButton.accessibilityHint = "Volta ao início para criar uma nova decisão."
-        // Altura mínima de toque confortável.
-        newDecisionButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        contentStack.setCustomSpacing(12, after: statusLabel)
+        contentStack.setCustomSpacing(Theme.Spacing.extraLarge, after: resultCard)
     }
 
-    /// Associa interações dos botões aos callbacks.
     private func configureActions() {
-        // UIAction com captura fraca de self para evitar ciclos de retenção.
-        tryAgainButton.addAction(UIAction { [weak self] _ in
-            self?.onTryAgainTapped?()
-        }, for: .touchUpInside)
-
-        newDecisionButton.addAction(UIAction { [weak self] _ in
-            self?.onNewDecisionTapped?()
-        }, for: .touchUpInside)
+        tryAgainButton.addAction(UIAction { [weak self] _ in self?.onTryAgainTapped?() }, for: .touchUpInside)
+        newDecisionButton.addAction(UIAction { [weak self] _ in self?.onNewDecisionTapped?() }, for: .touchUpInside)
     }
 
-    /// Monta a hierarquia de subviews.
     private func buildHierarchy() {
+        addSubview(glowLime)
+        addSubview(glowPink)
+
+        resultCard.addSubview(optionLabel)
+        optionLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            optionLabel.leadingAnchor.constraint(equalTo: resultCard.leadingAnchor, constant: 24),
+            optionLabel.trailingAnchor.constraint(equalTo: resultCard.trailingAnchor, constant: -24),
+            optionLabel.centerYAnchor.constraint(equalTo: resultCard.centerYAnchor),
+            optionLabel.topAnchor.constraint(greaterThanOrEqualTo: resultCard.topAnchor, constant: 28),
+            optionLabel.bottomAnchor.constraint(lessThanOrEqualTo: resultCard.bottomAnchor, constant: -28),
+            resultCard.heightAnchor.constraint(greaterThanOrEqualToConstant: 220),
+        ])
+
         actionsStack.addArrangedSubview(tryAgainButton)
         actionsStack.addArrangedSubview(newDecisionButton)
 
-        [questionTitleLabel, questionLabel, winnerTitleLabel, winnerLabel, actionsStack]
+        [questionCaptionLabel, questionLabel, statusLabel, resultCard, actionsStack]
             .forEach { contentStack.addArrangedSubview($0) }
 
         scrollView.addSubview(contentStack)
         addSubview(scrollView)
     }
 
-    /// Define constraints de layout.
     private func activateConstraints() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentStack.translatesAutoresizingMaskIntoConstraints = false
+        glowLime.translatesAutoresizingMaskIntoConstraints = false
+        glowPink.translatesAutoresizingMaskIntoConstraints = false
 
-        // Guides da scroll: conteúdo rolável x área visível.
         let content = scrollView.contentLayoutGuide
         let frame = scrollView.frameLayoutGuide
-
-        // Largura preenchida com margens (prioridade alta, não obrigatória).
         let fillWidth = contentStack.widthAnchor.constraint(
-            equalTo: safeAreaLayoutGuide.widthAnchor,
-            constant: -2 * Theme.Spacing.large
+            equalTo: safeAreaLayoutGuide.widthAnchor, constant: -2 * 20
         )
         fillWidth.priority = .defaultHigh
-
-        // Centraliza verticalmente quando possível; permite rolar se necessário.
-        let centerVertically = contentStack.centerYAnchor.constraint(equalTo: frame.centerYAnchor)
-        centerVertically.priority = .defaultLow
+        let centerY = contentStack.centerYAnchor.constraint(equalTo: frame.centerYAnchor)
+        centerY.priority = .defaultLow
 
         NSLayoutConstraint.activate([
-            // Scroll ocupa a área segura.
             scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
-
-            // Evita rolagem horizontal.
             content.widthAnchor.constraint(equalTo: frame.widthAnchor),
-
-            // Posicionamento e limites do conteúdo.
             contentStack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            contentStack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: Theme.Spacing.large),
-            contentStack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -Theme.Spacing.large),
-            contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: Theme.Layout.maxContentWidth),
-            fillWidth,
-            centerVertically
+            contentStack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 24),
+            contentStack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -32),
+            contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
+            fillWidth, centerY,
+
+            glowLime.widthAnchor.constraint(equalToConstant: 300),
+            glowLime.heightAnchor.constraint(equalToConstant: 300),
+            glowLime.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -100),
+            glowLime.topAnchor.constraint(equalTo: topAnchor, constant: 140),
+            glowPink.widthAnchor.constraint(equalToConstant: 280),
+            glowPink.heightAnchor.constraint(equalToConstant: 280),
+            glowPink.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 80),
+            glowPink.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -120),
         ])
     }
 
     // MARK: - API para o controller
 
-    /// Define o texto da pergunta exibida.
     func setQuestion(_ question: String) {
         questionLabel.text = question
     }
 
-    /// Mostra um texto no destaque do resultado (usado a cada frame da animação).
-    /// Não aplica animação extra para manter a troca rápida e fluida.
+    /// Mostra um texto no destaque do resultado (chamado a cada frame da animação).
+    /// Aplica uma transição sutil de "slot" para dar sensação de troca.
     func showOption(_ text: String) {
-        winnerLabel.text = text
+        // Se o texto mudou, anima uma queda leve (inspira o slotIn do protótipo).
+        if optionLabel.text != text {
+            let transition = CATransition()
+            transition.type = .push
+            transition.subtype = .fromBottom
+            transition.duration = 0.08
+            transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            optionLabel.layer.add(transition, forKey: "slot")
+        }
+        optionLabel.text = text
+
+        // Heurística visual: enquanto ações estiverem desabilitadas o controller está animando;
+        // aqui apenas atualizamos estilo se já marcado como final via setActionsEnabled.
     }
 
-    /// Habilita/desabilita botões de ação (ex.: durante a animação).
+    /// Habilita/desabilita ações e alterna estado visual (sorteando x decidido).
     func setActionsEnabled(_ enabled: Bool) {
         tryAgainButton.isEnabled = enabled
         newDecisionButton.isEnabled = enabled
+        isFinalState = enabled
+        updateStateAppearance()
     }
 
-    /// Oculta/exibe o resultado para tecnologias assistivas.
-    /// Usado para evitar que o VoiceOver anuncie cada troca rápida durante a animação.
     func setWinnerAccessibilityHidden(_ hidden: Bool) {
-        winnerLabel.accessibilityElementsHidden = hidden
+        optionLabel.accessibilityElementsHidden = hidden
     }
 
-    // MARK: - Helpers
-
-    /// Cria um `UILabel` configurado com fonte dinâmica, cor e alinhamento padrão.
-    private static func makeLabel(
-        text: String,
-        textStyle: UIFont.TextStyle,
-        color: UIColor,
-        bold: Bool
-    ) -> UILabel {
-        let label = UILabel()
-        label.text = text
-
-        // Aplica text style e, opcionalmente, negrito, preservando suporte a Dynamic Type.
-        var font = UIFont.preferredFont(forTextStyle: textStyle)
-        if bold, let descriptor = font.fontDescriptor.withSymbolicTraits(.traitBold) {
-            font = UIFont(descriptor: descriptor, size: 0)
+    private func updateStateAppearance() {
+        if isFinalState {
+            statusLabel.text = "E a escolha é…"
+            statusLabel.textColor = Theme.Color.lime
+            resultCard.layer.borderWidth = 3
+            resultCard.layer.borderColor = Theme.Color.lime.resolvedColor(with: traitCollection).cgColor
+        } else {
+            statusLabel.text = "Sorteando..."
+            statusLabel.textColor = .white
+            resultCard.layer.borderWidth = 0
+            resultCard.layer.borderColor = nil
         }
+    }
+}
 
-        label.font = font
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = color
-        label.numberOfLines = 0
-        return label
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let d = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+        return UIFont(descriptor: d, size: pointSize)
     }
 }
 

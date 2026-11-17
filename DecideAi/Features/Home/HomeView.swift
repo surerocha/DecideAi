@@ -7,192 +7,340 @@
 
 import UIKit
 
-// MARK: - View da Home (UI)
+// MARK: - View da Home (identidade Figma)
 
-/// Parte visual da tela inicial (Home).
-/// Responsabilidades:
-/// - montar e configurar os componentes de interface;
-/// - definir o layout (Auto Layout);
-/// - expor eventos de interação via callback.
-///
-/// Não é responsável por navegação nem por regras de negócio.
-/// (Quem navega é o `HomeViewController`.)
+/// Tela inicial com a identidade visual do protótipo:
+/// fundo em gradiente de marca, composição hero, título expressivo e CTA em lima.
+/// Mantém o callback `onStartTapped` para navegação (controller não muda).
 final class HomeView: UIView {
 
-    // MARK: - Callback de interação
+    // MARK: - Callback
 
-    /// Closure chamada quando o usuário toca em "Nova decisão".
-    /// O controller atribui essa closure para reagir ao toque (ex.: fazer push).
+    /// Chamado quando o usuário toca em "Nova decisão".
     var onStartTapped: (() -> Void)?
 
-    // MARK: - Componentes de UI
+    // MARK: - Camadas e componentes
 
-    // Scroll view permite rolar o conteúdo em telas menores ou com fontes grandes.
+    private let gradientLayer = CAGradientLayer()
+    private let glowLime = UIView()
+    private let glowPink = UIView()
+
     private let scrollView = UIScrollView()
-
-    // Stack view organiza os elementos verticalmente e calcula espaçamentos/posições.
     private let contentStack = UIStackView()
 
-    // Ícone ilustrativo (SF Symbol).
-    private let iconView = UIImageView()
+    private let heroContainer = UIView()
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+    private let explanationLabel = UILabel()
+    private let stepsStack = UIStackView()
 
-    // Labels de texto (título, convite, explicação, slogan).
-    private let titleLabel = HomeView.makeLabel(textStyle: .largeTitle, color: Theme.Color.primaryText, bold: true)
-    private let invitationLabel = HomeView.makeLabel(textStyle: .title2, color: Theme.Color.primaryText, bold: true)
-    private let explanationLabel = HomeView.makeLabel(textStyle: .body, color: Theme.Color.secondaryText)
-    private let sloganLabel = HomeView.makeLabel(textStyle: .footnote, color: Theme.Color.secondaryText)
+    // CTA principal no estilo "lime" do protótipo.
+    private let startButton = PrimaryButton(title: "Nova decisão", style: .lime)
 
-    // Botão principal reutilizável do app.
-    private let startButton = PrimaryButton(title: "Nova decisão")
+    // MARK: - Init
 
-    // MARK: - Inicialização
-
-    /// Inicializador programático da view.
     override init(frame: CGRect) {
         super.init(frame: frame)
-        // Ordem comum: configurar aparências -> montar hierarquia -> aplicar constraints.
         configureViews()
         buildHierarchy()
         activateConstraints()
     }
 
-    /// Inicializador exigido para Storyboard/XIB (não usado neste projeto).
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Configuração dos componentes
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Gradiente precisa acompanhar o tamanho da view.
+        gradientLayer.frame = bounds
+        Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
+        layoutGlows()
+    }
 
-    /// Define conteúdo, estilos e comportamentos dos componentes.
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true {
+            Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
+        }
+    }
+
+    // MARK: - Configuração
+
     private func configureViews() {
-        // Cor de fundo da tela.
-        backgroundColor = Theme.Color.background
+        // Fundo gradiente de marca.
+        layer.insertSublayer(gradientLayer, at: 0)
+        Theme.applyBrandGradient(to: gradientLayer, trait: traitCollection)
 
-        // Configura um SF Symbol (ícone vetorial do sistema) com tamanho e peso.
-        let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 72, weight: .semibold)
-        iconView.image = UIImage(systemName: "die.face.5.fill", withConfiguration: symbolConfiguration)
-        iconView.tintColor = Theme.Color.accent
-        iconView.contentMode = .scaleAspectFit
-        // Ícone puramente decorativo: oculto para leitores de tela (VoiceOver).
-        iconView.isAccessibilityElement = false
+        // Glows decorativos (blobs desfocados via alpha grande; aproxima o protótipo).
+        glowLime.backgroundColor = Theme.Color.lime.withAlphaComponent(0.22)
+        glowPink.backgroundColor = Theme.Color.coral.withAlphaComponent(0.22)
+        glowLime.layer.cornerRadius = 160
+        glowPink.layer.cornerRadius = 160
+        glowLime.isUserInteractionEnabled = false
+        glowPink.isUserInteractionEnabled = false
 
-        // Textos exibidos na tela.
-        titleLabel.text = "Decide Aí"
-        // Marca o título como cabeçalho para navegação por acessibilidade.
+        // Hero: ícone/cartas simplificado com SF Symbols e composição leve.
+        heroContainer.isAccessibilityElement = false
+
+        // Título "Decide Aí" com "Aí" em lima (estilo do protótipo).
+        titleLabel.numberOfLines = 0
+        titleLabel.textAlignment = .center
+        titleLabel.adjustsFontForContentSizeCategory = true
+        let title = NSMutableAttributedString(
+            string: "Decide ",
+            attributes: [
+                .font: Theme.Font.scaledDisplay(baseSize: 56, weight: .black, textStyle: .largeTitle),
+                .foregroundColor: UIColor.white
+            ]
+        )
+        title.append(NSAttributedString(
+            string: "Aí",
+            attributes: [
+                .font: Theme.Font.scaledDisplay(baseSize: 56, weight: .black, textStyle: .largeTitle),
+                .foregroundColor: Theme.Color.lime
+            ]
+        ))
+        titleLabel.attributedText = title
+        titleLabel.accessibilityLabel = "Decide Aí"
         titleLabel.accessibilityTraits = .header
 
-        invitationLabel.text = "Não consegue escolher? Deixa comigo!"
-        explanationLabel.text = "Crie uma decisão, adicione suas alternativas e deixe o sorteio escolher por você."
-        sloganLabel.text = "Você tem opções. A gente resolve."
+        // Subtítulo e explicação.
+        subtitleLabel.text = "Não consegue escolher? A gente decide com você."
+        subtitleLabel.font = Theme.Font.scaledDisplay(baseSize: 22, weight: .heavy, textStyle: .title2)
+        subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.textColor = .white
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.numberOfLines = 0
 
-        // Dica de acessibilidade explicando o efeito do botão.
+        explanationLabel.text = "Adicione suas opções e deixe o sorteio escolher. Sem drama, em poucos toques."
+        explanationLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        explanationLabel.adjustsFontForContentSizeCategory = true
+        explanationLabel.textColor = Theme.Color.onBrandMuted
+        explanationLabel.textAlignment = .center
+        explanationLabel.numberOfLines = 0
+
+        // Chips de passos (Pergunte / Adicione / Sorteie).
+        stepsStack.axis = .horizontal
+        stepsStack.alignment = .center
+        stepsStack.spacing = 8
+        stepsStack.distribution = .fillProportionally
+        let steps = ["Pergunte", "Adicione", "Sorteie"]
+        for (i, text) in steps.enumerated() {
+            stepsStack.addArrangedSubview(makeStepChip(index: i + 1, text: text))
+        }
+
+        // Botão CTA.
         startButton.accessibilityHint = "Abre a tela para criar uma nova decisão."
-
-        // `UIAction` (iOS 14+) associa um evento a uma closure.
-        // `[weak self]` evita ciclo de retenção: a view possui o botão; o botão
-        // armazena a action; sem `weak`, a action capturaria `self` fortemente.
+        // Ícone de "+" como no protótipo.
+        if var config = startButton.configuration {
+            config.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
+            config.imagePadding = 8
+            startButton.configuration = config
+        }
         startButton.addAction(UIAction { [weak self] _ in
             self?.onStartTapped?()
         }, for: .touchUpInside)
 
-        // Configuração da pilha vertical.
+        // Stack principal.
         contentStack.axis = .vertical
         contentStack.alignment = .fill
         contentStack.spacing = Theme.Spacing.medium
-        // Espaçamentos customizados após elementos específicos.
-        contentStack.setCustomSpacing(Theme.Spacing.extraLarge, after: explanationLabel)
-        contentStack.setCustomSpacing(Theme.Spacing.large, after: startButton)
+        contentStack.setCustomSpacing(Theme.Spacing.large, after: heroContainer)
+        contentStack.setCustomSpacing(Theme.Spacing.small, after: subtitleLabel)
+        contentStack.setCustomSpacing(Theme.Spacing.large, after: stepsStack)
     }
 
-    // MARK: - Hierarquia de views
-
-    /// Adiciona as views na hierarquia (quem é filho de quem).
     private func buildHierarchy() {
-        // Adiciona os elementos como filhos organizados pela stack.
-        [iconView, titleLabel, invitationLabel, explanationLabel, startButton, sloganLabel]
+        addSubview(glowLime)
+        addSubview(glowPink)
+
+        buildHero()
+
+        [heroContainer, titleLabel, subtitleLabel, explanationLabel, stepsStack, startButton]
             .forEach { contentStack.addArrangedSubview($0) }
 
-        // A stack vai dentro da scroll view; a scroll view vai dentro da view principal.
         scrollView.addSubview(contentStack)
         addSubview(scrollView)
     }
 
-    // MARK: - Auto Layout (constraints)
+    /// Monta uma composição hero simples (marca/cartas) inspirada no protótipo.
+    private func buildHero() {
+        // Três "cartas" e uma carta destaque com "?" para remeter ao hero do Figma.
+        let back1 = makeHeroCard(text: "03", bg: UIColor(hex: 0xB9A6FF), rotation: -0.05)
+        let back2 = makeHeroCard(text: "01", bg: .white, rotation: -0.26)
+        let back3 = makeHeroCard(text: "02", bg: Theme.Color.coral, rotation: 0.22)
+        let front = makeHeroFrontCard()
 
-    /// Define as constraints que posicionam e dimensionam os elementos.
-    private func activateConstraints() {
-        // Necessário ao usar Auto Layout programático.
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        [back2, back1, back3, front].forEach { heroContainer.addSubview($0) }
 
-        // Layout guides da UIScrollView:
-        // - contentLayoutGuide: representa a área do conteúdo rolável.
-        // - frameLayoutGuide: representa a área visível da scroll.
-        let content = scrollView.contentLayoutGuide
-        let frame = scrollView.frameLayoutGuide
-
-        // Largura "preenchendo" com margens laterais (boa no iPhone).
-        // Prioridade menor que required para permitir que, no iPad, o limite de largura vença.
-        let fillWidth = contentStack.widthAnchor.constraint(
-            equalTo: safeAreaLayoutGuide.widthAnchor,
-            constant: -2 * Theme.Spacing.large
-        )
-        fillWidth.priority = .defaultHigh
-
-        // Tenta centralizar verticalmente quando houver espaço sobrando.
-        // Prioridade baixa para que, se o conteúdo for maior, a rolagem funcione.
-        let centerVertically = contentStack.centerYAnchor.constraint(equalTo: frame.centerYAnchor)
-        centerVertically.priority = .defaultLow
-
-        // Ativa todas as constraints de uma vez.
+        // Posicionamento manual simples dentro do container (tamanho fixo).
+        [back1, back2, back3, front, heroContainer].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
         NSLayoutConstraint.activate([
-            // Scroll view ocupando a área segura.
-            scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
+            heroContainer.heightAnchor.constraint(equalToConstant: 220),
 
-            // Impede rolagem horizontal: conteúdo tem a mesma largura da área visível.
-            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
+            back2.widthAnchor.constraint(equalToConstant: 90), back2.heightAnchor.constraint(equalToConstant: 120),
+            back2.centerXAnchor.constraint(equalTo: heroContainer.centerXAnchor, constant: -55),
+            back2.centerYAnchor.constraint(equalTo: heroContainer.centerYAnchor, constant: 10),
 
-            // Posicionamento da stack dentro do conteúdo rolável.
-            contentStack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            contentStack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: Theme.Spacing.large),
-            contentStack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Theme.Spacing.large),
+            back3.widthAnchor.constraint(equalToConstant: 90), back3.heightAnchor.constraint(equalToConstant: 120),
+            back3.centerXAnchor.constraint(equalTo: heroContainer.centerXAnchor, constant: 55),
+            back3.centerYAnchor.constraint(equalTo: heroContainer.centerYAnchor, constant: 6),
 
-            // Limite de largura em telas grandes e preenchimento no iPhone.
-            contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: Theme.Layout.maxContentWidth),
-            fillWidth,
-            centerVertically
+            back1.widthAnchor.constraint(equalToConstant: 90), back1.heightAnchor.constraint(equalToConstant: 120),
+            back1.centerXAnchor.constraint(equalTo: heroContainer.centerXAnchor),
+            back1.centerYAnchor.constraint(equalTo: heroContainer.centerYAnchor, constant: -12),
+
+            front.widthAnchor.constraint(equalToConstant: 96), front.heightAnchor.constraint(equalToConstant: 132),
+            front.centerXAnchor.constraint(equalTo: heroContainer.centerXAnchor, constant: 6),
+            front.centerYAnchor.constraint(equalTo: heroContainer.centerYAnchor, constant: 18),
         ])
     }
 
-    // MARK: - Helpers
-
-    /// Cria e configura uma `UILabel` com estilo consistente (fonte dinâmica, cor, alinhamento).
-    /// - Parameters:
-    ///   - textStyle: estilo tipográfico do sistema (suporta Dynamic Type).
-    ///   - color: cor do texto.
-    ///   - bold: se deve aplicar negrito ao estilo.
-    private static func makeLabel(textStyle: UIFont.TextStyle, color: UIColor, bold: Bool = false) -> UILabel {
+    private func makeHeroCard(text: String, bg: UIColor, rotation: CGFloat) -> UIView {
+        let v = UIView()
+        v.backgroundColor = bg
+        v.layer.cornerRadius = 20
+        v.layer.cornerCurve = .continuous
+        v.transform = CGAffineTransform(rotationAngle: rotation)
         let label = UILabel()
+        label.text = text
+        label.font = Theme.Font.display(size: 20, weight: .black)
+        label.textColor = Theme.Color.limeInk.withAlphaComponent(0.7)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
+            label.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -10)
+        ])
+        return v
+    }
 
-        // Fonte baseada em text style para escalar com as preferências do usuário.
-        var font = UIFont.preferredFont(forTextStyle: textStyle)
-        if bold, let descriptor = font.fontDescriptor.withSymbolicTraits(.traitBold) {
-            // size 0 mantém o tamanho associado ao estilo (importante para Dynamic Type).
-            font = UIFont(descriptor: descriptor, size: 0)
-        }
+    private func makeHeroFrontCard() -> UIView {
+        let v = UIView()
+        v.backgroundColor = Theme.Color.lime
+        v.layer.cornerRadius = 22
+        v.layer.cornerCurve = .continuous
+        v.transform = CGAffineTransform(rotationAngle: 0.08)
+        v.layer.shadowColor = UIColor.black.cgColor
+        v.layer.shadowOpacity = 0.25
+        v.layer.shadowRadius = 18
+        v.layer.shadowOffset = CGSize(width: 0, height: 12)
 
-        label.font = font
-        // Atualiza automaticamente quando o tamanho de fonte do sistema muda.
+        let q = UILabel()
+        q.text = "?"
+        q.font = Theme.Font.display(size: 72, weight: .black)
+        q.textColor = Theme.Color.limeInk
+        q.textAlignment = .center
+        let cap = UILabel()
+        cap.text = "E A ESCOLHA É…"
+        cap.font = Theme.Font.display(size: 9, weight: .heavy)
+        cap.textColor = Theme.Color.limeInk
+        cap.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [q, cap])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 0
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: v.centerYAnchor)
+        ])
+        return v
+    }
+
+    private func makeStepChip(index: Int, text: String) -> UIView {
+        let container = UIView()
+        container.backgroundColor = UIColor.white.withAlphaComponent(0.12)
+        container.layer.cornerRadius = 16
+        container.layer.borderWidth = 1
+        container.layer.borderColor = UIColor.white.withAlphaComponent(0.15).cgColor
+
+        let badge = UILabel()
+        badge.text = "\(index)"
+        badge.font = Theme.Font.display(size: 11, weight: .black)
+        badge.textColor = Theme.Color.limeInk
+        badge.textAlignment = .center
+        badge.backgroundColor = Theme.Color.lime
+        badge.layer.cornerRadius = 10
+        badge.clipsToBounds = true
+
+        let label = UILabel()
+        label.text = text
+        label.font = UIFont.preferredFont(forTextStyle: .caption1).withWeight(.bold)
         label.adjustsFontForContentSizeCategory = true
-        label.textColor = color
-        label.textAlignment = .center
-        // 0 = número ilimitado de linhas (permite quebra de linha).
-        label.numberOfLines = 0
-        return label
+        label.textColor = .white
+
+        [badge, label].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; container.addSubview($0) }
+        NSLayoutConstraint.activate([
+            badge.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            badge.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 20),
+            badge.heightAnchor.constraint(equalToConstant: 20),
+            label.leadingAnchor.constraint(equalTo: badge.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 32)
+        ])
+        return container
+    }
+
+    private func activateConstraints() {
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        glowLime.translatesAutoresizingMaskIntoConstraints = false
+        glowPink.translatesAutoresizingMaskIntoConstraints = false
+
+        let content = scrollView.contentLayoutGuide
+        let frame = scrollView.frameLayoutGuide
+        let fillWidth = contentStack.widthAnchor.constraint(
+            equalTo: safeAreaLayoutGuide.widthAnchor, constant: -2 * Theme.Spacing.large
+        )
+        fillWidth.priority = .defaultHigh
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
+
+            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
+            contentStack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            contentStack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: Theme.Spacing.extraLarge),
+            contentStack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -Theme.Spacing.extraLarge),
+            contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
+            fillWidth,
+
+            glowLime.widthAnchor.constraint(equalToConstant: 320),
+            glowLime.heightAnchor.constraint(equalToConstant: 320),
+            glowLime.topAnchor.constraint(equalTo: topAnchor, constant: -120),
+            glowLime.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 80),
+
+            glowPink.widthAnchor.constraint(equalToConstant: 300),
+            glowPink.heightAnchor.constraint(equalToConstant: 300),
+            glowPink.topAnchor.constraint(equalTo: topAnchor, constant: 260),
+            glowPink.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -140),
+        ])
+    }
+
+    private func layoutGlows() {
+        // cantos grandes garantem aparência suave sem blur real (aproximação leve).
+        glowLime.layer.cornerRadius = glowLime.bounds.height / 2
+        glowPink.layer.cornerRadius = glowPink.bounds.height / 2
+    }
+}
+
+// MARK: - Helper de peso de fonte
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([
+            .traits: [UIFontDescriptor.TraitKey.weight: weight]
+        ])
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
 
