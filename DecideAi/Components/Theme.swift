@@ -62,6 +62,18 @@ enum Theme {
                 ? UIColor.white.withAlphaComponent(0.12)
                 : UIColor(hex: 0x16113A).withAlphaComponent(0.10)
         }
+        /// Borda de campos de texto (protótipo v2: `fieldLine`).
+        static let fieldLine = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0x6F69A8)
+                : UIColor(hex: 0x847FA6)
+        }
+        /// Realce do texto vencedor (protótipo v2: `--hl`).
+        static let highlight = UIColor { t in
+            t.userInterfaceStyle == .dark
+                ? UIColor(hex: 0xC8F53C).withAlphaComponent(0.40)
+                : UIColor(hex: 0xC8F53C)
+        }
 
         // --- Marca / destaque ---
         static let brand = UIColor { t in
@@ -109,6 +121,9 @@ enum Theme {
         /// Texto sobre fundos de marca/gradiente.
         static let onBrand = UIColor.white
         static let onBrandMuted = UIColor.white.withAlphaComponent(0.75)
+
+        /// Tinta do alerta nativo no tema (aproximação dos tokens de alerta do protótipo).
+        static let alertTint = accentText
 
         /// Cores para badges numeradas das opções (inspiradas no protótipo).
         static let optionPalette: [UIColor] = [

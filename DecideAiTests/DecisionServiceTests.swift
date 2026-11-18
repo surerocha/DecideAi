@@ -11,11 +11,10 @@ import XCTest
 // MARK: - Testes do serviço de sorteio (DecisionService)
 
 /// Testes unitários para `DecisionService` e a geração do `DrawPlan`.
-/// Foco: garantir propriedades importantes do sorteio/animação, como
-/// vencedor consistente com o último frame, desaceleração e comportamento de erro.
+/// Foco: garantir propriedades importantes do sorteio/animação (protótipo v2):
+/// vencedor consistente com o último frame, desaceleração das trocas, pausa final e erro.
 final class DecisionServiceTests: XCTestCase {
 
-    // Instância do serviço sob teste.
     private let service = DecisionService()
 
     /// Helper para criar rapidamente uma decisão válida com as opções informadas.
@@ -27,7 +26,6 @@ final class DecisionServiceTests: XCTestCase {
 
     /// Sortear com menos de 2 opções deve falhar com `.notEnoughOptions`.
     func testDrawFailsWithFewerThanTwoOptions() throws {
-        // Cria decisão com apenas 1 opção (inválida para sorteio).
         let decision = try makeDecision(options: ["Pizza"])
 
         XCTAssertThrowsError(try service.makeDrawPlan(for: decision)) { error in
@@ -42,11 +40,18 @@ final class DecisionServiceTests: XCTestCase {
 
         for _ in 0..<200 {
             let plan = try service.makeDrawPlan(for: decision)
-            // Último texto exibido == vencedor.
             XCTAssertEqual(plan.frames.last?.text, plan.winner)
-            // Índice do vencedor aponta para a mesma opção na lista.
             XCTAssertEqual(decision.options[plan.winnerIndex], plan.winner)
         }
+    }
+
+    /// Plano segue os parâmetros do protótipo v2: 20 trocas e pausa final com o vencedor.
+    func testPlanMatchesV2Parameters() throws {
+        let decision = try makeDecision(options: ["A", "B", "C"])
+        let plan = try service.makeDrawPlan(for: decision)
+
+        XCTAssertEqual(plan.frames.count, DecisionService.tickCount)
+        XCTAssertEqual(plan.frames.last?.duration ?? 0, DecisionService.endPauseDuration, accuracy: 0.0001)
     }
 
     /// Com duas opções, frames consecutivos devem alternar (nunca repetir a mesma opção).
@@ -54,26 +59,26 @@ final class DecisionServiceTests: XCTestCase {
         let decision = try makeDecision(options: ["A", "B"])
         let plan = try service.makeDrawPlan(for: decision)
 
-        // Compara cada frame com o próximo.
         for (previous, next) in zip(plan.frames, plan.frames.dropFirst()) {
             XCTAssertNotEqual(previous.text, next.text)
         }
     }
 
-    /// A animação deve desacelerar: durações não decrescentes e fim mais lento que o início.
+    /// As trocas desaceleram: intervalos das trocas (exceto a pausa final) crescem e o fim é mais lento que o início.
     func testAnimationSlowsDown() throws {
         let decision = try makeDecision(options: ["A", "B", "C"])
         let plan = try service.makeDrawPlan(for: decision)
 
-        let durations = plan.frames.map(\.duration)
-        // Ordenado de forma crescente (não diminui).
-        XCTAssertEqual(durations, durations.sorted())
-        // Último mais lento que o primeiro.
-        XCTAssertLessThan(durations.first ?? 0, durations.last ?? 0)
+        let spinDurations = Array(plan.frames.dropLast().map(\.duration))
+        XCTAssertEqual(spinDurations, spinDurations.sorted())
+        XCTAssertLessThan(spinDurations.first ?? 0, spinDurations.last ?? 0)
+        // Último intervalo de troca segue a curva (índice TICKS-2) antes da pausa final do vencedor.
+        let expectedLastSpin = DecisionService.tickDelay(for: DecisionService.tickCount - 2)
+        XCTAssertEqual(spinDurations.last ?? 0, expectedLastSpin, accuracy: 0.0001)
+        XCTAssertEqual(spinDurations.first ?? 0, DecisionService.fastestFrameDuration, accuracy: 0.0001)
     }
 
     /// Em muitas execuções, cada opção deve vencer com frequência aproximada (aleatoriedade justa).
-    /// Usa tolerância ampla para evitar falsos negativos por variação estatística.
     func testEveryOptionHasRoughlyTheSameChance() throws {
         let decision = try makeDecision(options: ["A", "B", "C"])
         var counts = [String: Int]()
@@ -84,7 +89,6 @@ final class DecisionServiceTests: XCTestCase {
             counts[plan.winner, default: 0] += 1
         }
 
-        // Esperado ~1000 por opção; intervalo [800, 1200] é tolerância segura.
         for option in decision.options {
             let count = counts[option, default: 0]
             XCTAssertTrue((800...1200).contains(count), "\(option) won \(count) times")
@@ -95,27 +99,7 @@ final class DecisionServiceTests: XCTestCase {
 /*
  MARK: - Como seria em SwiftUI (equivalente conceitual)
 
- Assim como os testes do Model, estes testes do `DecisionService` não dependem de UIKit/SwiftUI
- e permanecem os mesmos em um app SwiftUI (o serviço é agnóstico de UI).
-
- // O que muda em SwiftUI é como a View reproduz o `DrawPlan` (ex.: loop em `.task` com
- // `Task.sleep`), mas as garantias testadas aqui (último frame = vencedor, desaceleração,
- // validação) continuam válidas.
-
- // Exemplo em Swift Testing (alternativa moderna):
- //
- // import Testing
- // @testable import DecideAi
- //
- // @Suite("DecisionService")
- // struct DecisionServiceSwiftTests {
- //     let service = DecisionService()
- //
- //     @Test func lastFrameIsAlwaysWinner() throws {
- //         var decision = Decision(question: "Q")
- //         try decision.addOption("A"); try decision.addOption("B")
- //         let plan = try service.makeDrawPlan(for: decision)
- //         #expect(plan.frames.last?.text == plan.winner)
- //     }
- // }
+ Estes testes do `DecisionService` não dependem de UIKit/SwiftUI e permanecem válidos em um app
+ SwiftUI (o serviço é agnóstico de UI). A reprodução do `DrawPlan` na View pode usar `.task`
+ e `Task.sleep` respeitando `frame.duration` (incluindo a pausa final de 300ms).
 */

@@ -1,9 +1,46 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.38039,0.33333,0.96078,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.47388,0.37939,0.96387,1.00000",
+      "display-p3:0.19165,0.10211,0.73633,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
-
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Group 1.svg",
+          "name" : "Group 1",
+          "position" : {
+            "scale" : 12.5,
+            "translation-in-points" : [
+              2.2548907566986145,
+              6.173946977137803
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
   ],
   "supported-platforms" : {
     "circles" : [
