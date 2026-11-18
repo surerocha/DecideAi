@@ -21,8 +21,8 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Texto do botão "voltar" nas telas seguintes.
-        navigationItem.backButtonTitle = "Início"
+        // Botão "voltar" nas telas seguintes: apenas ícone (sem texto).
+        navigationItem.backButtonDisplayMode = .minimal
         homeView.onStartTapped = { [weak self] in
             self?.showDecisionScreen()
         }

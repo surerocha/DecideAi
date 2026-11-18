@@ -15,7 +15,7 @@ import UIKit
 /// Validações na criação são exibidas inline (sem alertas), conforme o protótipo v2:
 /// opção vazia/repetida/limite e pergunta vazia ao tentar sortear (com foco no campo).
 /// O único alerta que permanece é o de edição de opção.
-final class DecisionViewController: UIViewController {
+final class DecisionViewController: UIViewController, UIGestureRecognizerDelegate {
 
     // MARK: - Propriedades
 
@@ -25,6 +25,8 @@ final class DecisionViewController: UIViewController {
 
     /// Observador para atualizar o estado do botão "Salvar" no alerta de edição.
     private var editAlertObserver: NSObjectProtocol?
+    /// Evita reentrância ao exibir o alerta de confirmação de saída.
+    private var isPresentingExitConfirmation = false
 
     // MARK: - Ciclo de vida
 
@@ -37,7 +39,19 @@ final class DecisionViewController: UIViewController {
 
         title = "Nova decisão"
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.backButtonTitle = "Opções"
+        // Para a próxima tela (resultado), o botão de voltar deve mostrar só o ícone.
+        navigationItem.backButtonDisplayMode = .minimal
+
+        // Botão de voltar personalizado (apenas ícone) para confirmar saída à Home.
+        navigationItem.hidesBackButton = true
+        let backButton = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.backward"),
+            style: .plain,
+            target: self,
+            action: #selector(backButtonTapped)
+        )
+        backButton.accessibilityLabel = "Voltar"
+        navigationItem.leftBarButtonItem = backButton
 
         // Aparência da barra sobre fundo canvas.
         let appearance = UINavigationBarAppearance()
@@ -57,12 +71,64 @@ final class DecisionViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationItem.largeTitleDisplayMode = .never
+        // Intercepta o gesto de voltar (edge swipe) para confirmar saída.
+        navigationController?.interactivePopGestureRecognizer?.delegate = self
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Ao sair para outra tela, libera o gesto de voltar (ex.: resultado controla o seu próprio estado).
+        if isMovingFromParent || navigationController?.topViewController != self {
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
+        }
     }
 
     deinit {
         if let obs = editAlertObserver {
             NotificationCenter.default.removeObserver(obs)
         }
+    }
+
+    // MARK: - Voltar com confirmação
+
+    @objc private func backButtonTapped() {
+        presentExitConfirmation()
+    }
+
+    /// Confirmação ao sair da criação para a tela inicial (evita perda acidental do que foi escrito).
+    private func presentExitConfirmation() {
+        guard !isPresentingExitConfirmation else { return }
+        // Se houver algo a perder, pede confirmação; caso contrário, volta direto.
+        let hasContent = !decision.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !decision.options.isEmpty
+            || !decisionView.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard hasContent else {
+            navigationController?.popViewController(animated: true)
+            return
+        }
+
+        isPresentingExitConfirmation = true
+        let alert = UIAlertController(
+            title: "Voltar à tela inicial?",
+            message: "Você vai perder o que escreveu nesta decisão.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancelar", style: .cancel) { [weak self] _ in
+            self?.isPresentingExitConfirmation = false
+        })
+        alert.addAction(UIAlertAction(title: "Voltar", style: .destructive) { [weak self] _ in
+            self?.isPresentingExitConfirmation = false
+            self?.navigationController?.popViewController(animated: true)
+        })
+        present(alert, animated: true)
+    }
+
+    /// Intercepta o gesto de voltar (swipe) para exibir a confirmação.
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer == navigationController?.interactivePopGestureRecognizer else { return true }
+        // Cancela o pop automático e pede confirmação.
+        presentExitConfirmation()
+        return false
     }
 
     // MARK: - Ligações View -> Controller

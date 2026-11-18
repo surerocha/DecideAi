@@ -10,7 +10,7 @@ import UIKit
 // MARK: - View do sorteio/resultado (protótipo v2)
 
 /// Tela unificada de sorteio e resultado: anima a alternância das opções e revela o vencedor,
-/// com mensagem, badge de repetição, lista "Concorreram" e ações.
+/// com mensagem, badge de repetição, lista "Concorreram" e ações fixas na parte inferior.
 /// A View é controlada pelo `ResultViewController` (animação, háptica e acessibilidade).
 final class ResultView: UIView {
 
@@ -45,9 +45,11 @@ final class ResultView: UIView {
     private let chipsScroll = UIScrollView()
     private let chipsStack = UIStackView()
 
+    /// Barra inferior fixa com as ações (fora da rolagem).
+    private let bottomBar = UIView()
     private let actionsStack = UIStackView()
     private let tryAgainButton = PrimaryButton(title: "Tentar novamente", style: .lime)
-    private let newDecisionButton = PrimaryButton(title: "Nova decisão", style: .glass)
+    private let newDecisionButton = PrimaryButton(title: "Ir para tela inicial", style: .glass)
 
     // MARK: - Estado
 
@@ -193,18 +195,21 @@ final class ResultView: UIView {
         actionsStack.alignment = .fill
         actionsStack.spacing = 10
 
+        bottomBar.backgroundColor = .clear
+
         if var c = tryAgainButton.configuration {
             c.image = UIImage(systemName: "arrow.clockwise", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
             c.imagePadding = 8
             tryAgainButton.configuration = c
         }
         if var c = newDecisionButton.configuration {
-            c.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(weight: .bold))
+            c.title = "Ir para tela inicial"
+            c.image = UIImage(systemName: "house", withConfiguration: UIImage.SymbolConfiguration(weight: .semibold))
             c.imagePadding = 8
             newDecisionButton.configuration = c
         }
         tryAgainButton.accessibilityHint = "Realiza um novo sorteio com as mesmas opções."
-        newDecisionButton.accessibilityHint = "Volta ao início para criar uma nova decisão."
+        newDecisionButton.accessibilityHint = "Volta à tela inicial."
 
         contentStack.axis = .vertical
         contentStack.alignment = .fill
@@ -224,18 +229,20 @@ final class ResultView: UIView {
 
         actionsStack.addArrangedSubview(tryAgainButton)
         actionsStack.addArrangedSubview(newDecisionButton)
+        bottomBar.addSubview(actionsStack)
 
         chipsScroll.addSubview(chipsStack)
 
-        [questionCaptionLabel, questionLabel, statusLabel, card, repeatedBadge, messageLabel, competedCaption, chipsScroll, actionsStack]
+        [questionCaptionLabel, questionLabel, statusLabel, card, repeatedBadge, messageLabel, competedCaption, chipsScroll]
             .forEach { contentStack.addArrangedSubview($0) }
 
         scrollView.addSubview(contentStack)
         addSubview(scrollView)
+        addSubview(bottomBar)
     }
 
     private func activateConstraints() {
-        [scrollView, contentStack, glowLime, glowPink, cardBadge, optionLabel, leftMarker, rightMarker, repeatedBadge, chipsStack].forEach {
+        [scrollView, contentStack, bottomBar, actionsStack, glowLime, glowPink, cardBadge, optionLabel, leftMarker, rightMarker, repeatedBadge, chipsStack].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
 
@@ -245,10 +252,20 @@ final class ResultView: UIView {
         fillWidth.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
+            // Barra inferior fixa com as ações.
+            bottomBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bottomBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bottomBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            actionsStack.topAnchor.constraint(equalTo: bottomBar.topAnchor, constant: 12),
+            actionsStack.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            actionsStack.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            actionsStack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -12),
+
             scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
             content.widthAnchor.constraint(equalTo: frameGuide.widthAnchor),
             contentStack.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 16),
@@ -303,9 +320,10 @@ final class ResultView: UIView {
         contentStack.setCustomSpacing(4, after: questionCaptionLabel)
         contentStack.setCustomSpacing(16, after: questionLabel)
         contentStack.setCustomSpacing(12, after: statusLabel)
-        contentStack.setCustomSpacing(18, after: repeatedBadge)
-        contentStack.setCustomSpacing(6, after: competedCaption)
-        contentStack.setCustomSpacing(16, after: chipsScroll)
+        // Espaçamento maior entre o cartão/selo, a mensagem e "Concorreram".
+        contentStack.setCustomSpacing(28, after: repeatedBadge)
+        contentStack.setCustomSpacing(28, after: messageLabel)
+        contentStack.setCustomSpacing(10, after: competedCaption)
     }
 
     // MARK: - API para o controller
